@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图片压缩工具</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ant-design-icons@4.7.0/font/ant-design-icons.min.css">
+    <script src="../node_modules/browser-image-compression/dist/browser-image-compression.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            width: 100%;
+            max-width: 1020px;
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+            position: relative;
+        }
+
+        .back-btn {
+            position: absolute;
+            left: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .back-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-50%) scale(1.05);
+        }
+
+        .header h1 {
+            font-size: 28px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .header p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        /* 粘贴按钮 */
+        .paste-section {
+            margin-bottom: 30px;
+        }
+
+        .paste-btn {
+            width: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 16px;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .paste-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .paste-btn:active {
+            transform: translateY(0);
+        }
+
+        /* 预览卡片容器 */
+        .preview-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-bottom: 30px;
+        }
+
+        .preview-card {
+            background: #f8f9fa;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 2px dashed #dee2e6;
+            transition: all 0.3s ease;
+        }
+
+        .preview-card:hover {
+            border-color: #667eea;
+            background: #f0f2ff;
+        }
+
+        .preview-img-wrapper {
+            width: 100%;
+            height: 300px;
+            background: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .preview-img-wrapper img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+
+        .card-label {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            padding: 6px 12px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        /* 图片操作按钮组 */
+        .img-actions {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            display: flex;
+            gap: 8px;
+        }
+
+        .img-action-btn {
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 8px 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.3s ease;
+            font-size: 13px;
+            color: #666;
+        }
+
+        .img-action-btn:hover:not(:disabled) {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-color: #667eea;
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .img-action-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .preview-empty {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: #999;
+            text-align: center;
+        }
+
+        .preview-empty-icon {
+            font-size: 48px;
+            margin-bottom: 12px;
+        }
+
+        .preview-empty-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 4px;
+            color: #666;
+        }
+
+        .preview-empty-desc {
+            font-size: 13px;
+            color: #999;
+        }
+
+        .preview-info {
+            padding: 16px;
+            text-align: center;
+            font-size: 13px;
+            color: #666;
+            background: #f8f9fa;
+        }
+
+        /* 拖拽区域 */
+        .drop-zone {
+            position: absolute;
+            inset: 0;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: rgba(102, 126, 234, 0.1);
+            border: 2px dashed #667eea;
+            border-radius: 12px;
+            z-index: 10;
+            cursor: pointer;
+        }
+
+        .drop-zone.active {
+            display: flex;
+        }
+
+        .drop-zone-text {
+            font-size: 16px;
+            font-weight: 600;
+            color: #667eea;
+            margin-bottom: 4px;
+        }
+
+        .drop-zone-hint {
+            font-size: 13px;
+            color: #999;
+        }
+
+        /* 控制面板 */
+        .control-panel {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 30px;
+        }
+
+        .control-panel h3 {
+            font-size: 16px;
+            color: #333;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .control-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 24px;
+            align-items: center;
+        }
+
+        .control-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .control-item label {
+            font-size: 14px;
+            color: #666;
+            font-weight: 500;
+        }
+
+        .control-item input[type="number"] {
+            width: 100px;
+            padding: 10px 14px;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            outline: none;
+        }
+
+        .control-item input[type="number"]:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .checkbox-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+        }
+
+        .checkbox-wrapper input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+        .checkbox-wrapper label {
+            font-size: 14px;
+            color: #666;
+            cursor: pointer;
+        }
+
+        .compress-btn {
+            margin-left: auto;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .compress-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .compress-btn:active {
+            transform: translateY(0);
+        }
+
+        .compress-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        /* Toast 通知 */
+        .toast {
+            position: fixed;
+            left: 50%;
+            bottom: 60px;
+            transform: translateX(-50%) translateY(20px);
+            background: #333;
+            color: white;
+            padding: 14px 24px;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 500;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.3s ease;
+            z-index: 9999;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        /* 响应式适配 */
+        @media (max-width: 768px) {
+            .preview-container {
+                grid-template-columns: 1fr;
+            }
+
+            .control-row {
+                justify-content: space-between;
+            }
+
+            .compress-btn {
+                margin-left: 0;
+                width: 100%;
+                justify-content: center;
+                margin-top: 16px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <button class="back-btn" id="backBtn">← 返回工具集</button>
+            <h1>🖼️ 图片压缩工具</h1>
+            <p>快速压缩图片，轻松复制保存</p>
+        </div>
+
+        <div class="content">
+            <!-- 粘贴按钮 -->
+            <div class="paste-section">
+                <button class="paste-btn" id="pasteBtn">
+                    <span>📋</span>
+                    从剪贴板获取图片
+                </button>
+            </div>
+
+            <!-- 预览区 -->
+            <div class="preview-container">
+                <!-- 原图预览卡片 -->
+                <div class="preview-card">
+                    <div class="preview-img-wrapper" id="originalWrapper">
+                        <span class="card-label">原图</span>
+                        <div class="preview-empty" id="originalEmpty">
+                            <span class="preview-empty-icon">🖼️</span>
+                            <span class="preview-empty-title">原图预览</span>
+                            <span class="preview-empty-desc">点击选择或拖入图片</span>
+                        </div>
+                        <img id="originalImg" alt="原图预览" style="display: none;">
+
+                        <!-- 拖拽提示层 -->
+                        <div class="drop-zone" id="dropZone">
+                            <span>📥</span>
+                            <span class="drop-zone-text">释放图片</span>
+                            <span class="drop-zone-hint">或点击选择文件</span>
+                        </div>
+
+                        <!-- 点击选择文件（隐藏） -->
+                        <input type="file" id="fileInput" accept="image/*" style="display: none;">
+                    </div>
+                    <div id="originalInfo" class="preview-info">--</div>
+                </div>
+
+                <!-- 压缩图预览卡片 -->
+                <div class="preview-card">
+                    <div class="preview-img-wrapper">
+                        <span class="card-label">压缩后</span>
+                        <div class="img-actions" id="compressedActions">
+                            <button id="copyBtn" class="img-action-btn" disabled>
+                                <span>📋</span>
+                                复制
+                            </button>
+                            <button id="saveBtn" class="img-action-btn" disabled>
+                                <span>💾</span>
+                                保存
+                            </button>
+                        </div>
+                        <div class="preview-empty" id="compressedEmpty">
+                            <span class="preview-empty-icon">✨</span>
+                            <span class="preview-empty-title">压缩图预览</span>
+                            <span class="preview-empty-desc">设置参数后点击压缩</span>
+                        </div>
+                        <img id="compressedImg" alt="压缩图预览" style="display: none;">
+                    </div>
+                    <div id="compressedInfo" class="preview-info">--</div>
+                </div>
+            </div>
+
+            <!-- 压缩参数控制面板 -->
+            <div class="control-panel">
+                <h3>⚙️ 压缩参数</h3>
+                <div class="control-row">
+                    <div class="control-item">
+                        <label for="quality">压缩质量</label>
+                        <input type="number" id="quality" value="85" min="0" max="100">
+                        <span style="color: #999; font-size: 13px;">(0-100)</span>
+                    </div>
+
+                    <div class="control-item">
+                        <label for="width">宽度</label>
+                        <input type="number" id="width" min="1">
+                        <span style="color: #999; font-size: 13px;">px</span>
+                    </div>
+
+                    <div class="control-item">
+                        <label for="height">高度</label>
+                        <input type="number" id="height" min="1">
+                        <span style="color: #999; font-size: 13px;">px</span>
+                    </div>
+
+                    <div class="checkbox-wrapper">
+                        <input type="checkbox" id="keepRatio" checked>
+                        <label for="keepRatio">保持纵横比</label>
+                    </div>
+
+                    <button id="compressBtn" class="compress-btn">
+                        <span>🔄</span>
+                        开始压缩
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast 通知 -->
+    <div class="toast" id="toast"></div>
+
+    <script src="renderer.js"></script>
+</body>
+</html>

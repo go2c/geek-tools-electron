@@ -1,0 +1,51 @@
+{
+  "name": "geek-tools",
+  "version": "1.0.0",
+  "description": "Geek Tools - 实用工具集",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder"
+  },
+  "keywords": [
+    "tools",
+    "electron",
+    "excel",
+    "image-compression"
+  ],
+  "author": "SamShen",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "30.5.1",
+    "electron-builder": "^24.13.3"
+  },
+  "dependencies": {
+    "xlsx": "^0.18.5",
+    "browser-image-compression": "^2.0.2"
+  },
+  "build": {
+    "appId": "com.geektools.app",
+    "productName": "Geek Tools",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "**/*",
+      "!dist",
+      "!excel-tool/dist",
+      "!image-compressor/dist"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Geek Tools"
+    }
+  }
+}
