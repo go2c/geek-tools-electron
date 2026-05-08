@@ -1,0 +1,101 @@
+# 🛠️ Geek Tools
+
+一个集成了多个实用工具的桌面应用，基于 Electron 开发。
+
+## ✨ 功能特性
+
+### 📊 Excel 智能处理工具
+- **合并单元格**：根据指定列合并相邻的相同值
+- **取消合并**：将合并的单元格内容填充到每一行
+- **分组统计**：按指定列分组并统计数量
+
+### 🖼️ 图片压缩工具
+- 支持拖拽和剪贴板导入图片
+- 可调节压缩质量（0-100）
+- 自定义输出尺寸，支持保持纵横比
+- 全屏预览压缩结果，支持滚轮缩放
+- 一键复制到剪贴板或保存到本地
+
+## 🛠️ 技术栈
+
+- **框架**: Electron 30
+- **语言**: JavaScript (ES6+)
+- **样式**: CSS3
+- **依赖**:
+  - `xlsx` - Excel 文件处理
+  - `browser-image-compression` - 图片压缩
+
+## 📦 安装与运行
+
+### 安装依赖
+
+```bash
+npm install
+```
+
+### 开发模式
+
+```bash
+npm start
+```
+
+### 打包构建
+
+```bash
+# Windows
+npm run build:win
+
+# macOS
+npm run build:mac
+
+# Linux
+npm run build:linux
+```
+
+## 📖 使用说明
+
+### Excel 工具
+1. 点击「选择文件」按钮选择 Excel 文件（支持 .xlsx 和 .xls 格式）
+2. 选择要处理的列
+3. 选择操作类型：合并单元格 / 取消合并 / 分组统计
+4. 点击「开始处理」按钮
+5. 处理完成后会在原文件目录生成新文件
+
+### 图片压缩工具
+1. 通过拖拽、剪贴板粘贴或点击选择图片
+2. 调整压缩参数（质量、尺寸）
+3. 点击「开始压缩」或按 Enter 键
+4. 查看压缩结果，支持全屏预览和缩放
+5. 复制或保存压缩后的图片
+
+## 📁 项目结构
+
+```
+geek-tools-electron/
+├── index.html          # 主页面（工具集首页）
+├── main.js             # Electron 主进程
+├── preload.js          # 预加载脚本
+├── package.json        # 项目配置
+├── excel-tool/         # Excel 工具子应用
+│   ├── index.html
+│   └── renderer.js
+└── image-compressor/   # 图片压缩工具子应用
+    ├── index.html
+    └── renderer.js
+```
+
+## 📄 许可证
+
+MIT License
+
+## 🤝 贡献
+
+欢迎提交 Issue 和 Pull Request！
+
+## 📧 联系方式
+
+如有问题或建议，请通过 Issue 联系。
+
+---
+
+**享受使用！** 🚀
