@@ -72,16 +72,18 @@ npm run build:linux
 
 ```
 geek-tools-electron/
-├── index.html          # 主页面（工具集首页）
-├── main.js             # Electron 主进程
-├── preload.js          # 预加载脚本
-├── package.json        # 项目配置
-├── excel-tool/         # Excel 工具子应用
-│   ├── index.html
-│   └── renderer.js
-└── image-compressor/   # 图片压缩工具子应用
-    ├── index.html
-    └── renderer.js
+├── index.html                 # 主页面（工具集首页）
+├── main.js                    # Electron 主进程入口
+├── preload.js                 # 预加载脚本（暴露API）
+├── package.json               # 项目配置
+├── excel-tool/                # Excel 工具子应用
+│   ├── index.html             # 渲染页面
+│   ├── renderer.js            # 渲染进程逻辑
+│   └── main-api.js            # 主进程API（文件选择、Excel处理）
+└── image-compressor/          # 图片压缩工具子应用
+    ├── index.html             # 渲染页面
+    ├── renderer.js            # 渲染进程逻辑
+    └── main-api.js            # 主进程API（剪贴板操作）
 ```
 
 ## 📄 许可证
