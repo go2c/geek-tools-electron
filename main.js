@@ -50,19 +50,13 @@ ipcMain.handle('navigate-to', async (event, appName) => {
   switch (appName) {
     case 'excel-tool':
       htmlPath = path.join(__dirname, 'excel-tool', 'index.html');
-      // mainWindow.setSize(900, 700);
-      // mainWindow.setMinimumSize(800, 600);
       break;
     case 'image-compressor':
-      htmlPath = path.join(__dirname, 'image-compressor', 'index.html');
-      // mainWindow.setSize(1020, 810);
-      // mainWindow.setMinimumSize(820, 680);
+      htmlPath = path.join(__dirname, 'image-compressor', 'index.html');     
       break;
     case 'home':
     default:
       htmlPath = path.join(__dirname, 'index.html');
-      mainWindow.setSize(1200, 900);
-      mainWindow.setMinimumSize(800, 600);
       break;
   }
   

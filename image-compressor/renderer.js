@@ -84,30 +84,24 @@ function loadImageFile(file) {
  */
 function updatePreviewEmptyState() {
   const originalEmpty = $('#originalEmpty')
-  const originalPlaceholder = $('#originalPlaceholder')
   const originalImg = $('#originalImg')
   
   if (originalFile) {
     originalEmpty.style.display = 'none'
-    originalPlaceholder.style.display = 'none'
     originalImg.style.display = 'block'
   } else {
     originalEmpty.style.display = 'flex'
-    originalPlaceholder.style.display = 'block'
     originalImg.style.display = 'none'
   }
   
   const compressedEmpty = $('#compressedEmpty')
-  const compressedPlaceholder = $('#compressedPlaceholder')
   const compressedImg = $('#compressedImg')
   
   if (compressedDataUrl) {
     compressedEmpty.style.display = 'none'
-    compressedPlaceholder.style.display = 'none'
     compressedImg.style.display = 'block'
   } else {
     compressedEmpty.style.display = 'flex'
-    compressedPlaceholder.style.display = 'block'
     compressedImg.style.display = 'none'
   }
 }
@@ -168,11 +162,7 @@ $('#pasteBtn').addEventListener('click', async () => {
 $('#originalWrapper').addEventListener('click', (e) => {
   // 如果点击的是操作按钮，不触發文件选择
   if (e.target.closest('.img-actions') || e.target.closest('#dropZone')) return
-  // 如果已经有图片，显示拖拽提示
-  if (originalFile) {
-    $('#dropZone').classList.add('active')
-    return
-  }
+  // 如果已经有图片，不显示拖拽提示，直接打开文件选择
   // 没有图片时，直接打开文件选择
   $('#fileInput').click()
 })
@@ -371,4 +361,104 @@ $('#saveBtn').addEventListener('click', () => {
   downloadLink.download = `compressed-image-${Date.now()}.jpg`
   downloadLink.click()
   toast('图片已保存')
+})
+
+// -------------------------- 全屏预览功能 --------------------------
+let currentZoom = 1
+
+/**
+ * 打开全屏预览
+ */
+/**
+ * 全屏预览滚轮缩放处理
+ * @param {WheelEvent} e 滚轮事件
+ */
+function handleFullscreenWheel(e) {
+  e.preventDefault()
+  const delta = e.deltaY > 0 ? -0.1 : 0.1
+  zoomImage(delta)
+}
+
+function openFullscreenPreview() {
+  if (!compressedDataUrl) return
+  
+  const modal = $('#fullscreenModal')
+  const img = $('#fullscreenImage')
+  
+  img.src = compressedDataUrl
+  img.style.transform = `scale(${currentZoom})`
+  $('#zoomLevel').textContent = `${Math.round(currentZoom * 100)}%`
+  
+  modal.classList.add('show')
+  document.body.style.overflow = 'hidden'
+  
+  // 添加滚轮事件监听
+  $('#fullscreenModal').addEventListener('wheel', handleFullscreenWheel, { passive: false })
+}
+
+/**
+ * 关闭全屏预览
+ */
+function closeFullscreenPreview() {
+  const modal = $('#fullscreenModal')
+  modal.classList.remove('show')
+  document.body.style.overflow = ''
+  
+  // 移除滚轮事件监听
+  $('#fullscreenModal').removeEventListener('wheel', handleFullscreenWheel)
+}
+
+/**
+ * 缩放图片
+ * @param {number} delta 缩放增量
+ */
+function zoomImage(delta) {
+  const img = $('#fullscreenImage')
+  currentZoom = Math.max(0.25, Math.min(3, currentZoom + delta))
+  img.style.transform = `scale(${currentZoom})`
+  $('#zoomLevel').textContent = `${Math.round(currentZoom * 100)}%`
+}
+
+/**
+ * 重置缩放
+ */
+function resetZoom() {
+  const img = $('#fullscreenImage')
+  currentZoom = 1
+  img.style.transform = `scale(${currentZoom})`
+  $('#zoomLevel').textContent = '100%'
+}
+
+// 压缩后图片点击事件
+$('#compressedImg').addEventListener('click', () => {
+  if (compressedDataUrl) {
+    openFullscreenPreview()
+  }
+})
+
+// 全屏预览关闭按钮
+$('#fullscreenClose').addEventListener('click', closeFullscreenPreview)
+
+// 全屏遮罩点击关闭
+$('#fullscreenOverlay').addEventListener('click', closeFullscreenPreview)
+
+// 缩放控制按钮
+$('#zoomOutBtn').addEventListener('click', () => zoomImage(-0.25))
+$('#zoomInBtn').addEventListener('click', () => zoomImage(0.25))
+$('#zoomResetBtn').addEventListener('click', resetZoom)
+
+// ESC键关闭全屏预览 和 Enter键触发压缩
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && $('#fullscreenModal').classList.contains('show')) {
+    closeFullscreenPreview()
+  }
+  
+  // Enter键触发压缩
+  if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) {
+    // 检查是否在输入框中
+    const activeElement = document.activeElement
+    if (activeElement.tagName !== 'INPUT') {
+      $('#compressBtn').click()
+    }
+  }
 })
