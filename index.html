@@ -46,8 +46,8 @@
 
         .tools-grid {
             display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 32px;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 24px;
         }
 
         .tool-card {
@@ -94,6 +94,10 @@
             background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
         }
 
+        .tool-card:nth-child(3) .tool-icon {
+            background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%);
+        }
+
         .tool-card h3 {
             font-size: 22px;
             font-weight: 600;
@@ -138,14 +142,20 @@
         <div class="tools-grid">
             <div class="tool-card" id="excelTool">
                 <div class="tool-icon">📊</div>
-                <h3>Excel 智能处理工具</h3>
-                <p>合并单元格、取消合并、分组统计，轻松处理 Excel 表格数据</p>
+                <h3>Excel智能处理</h3>
+                <p>合并/取消合并单元格、分组统计，轻松处理表格数据</p>
             </div>
 
             <div class="tool-card" id="imageCompressor">
                 <div class="tool-icon">🖼️</div>
                 <h3>图片压缩工具</h3>
                 <p>快速压缩图片大小，支持多种压缩参数调节，一键复制保存</p>
+            </div>
+
+            <div class="tool-card" id="removeWatermark">
+                <div class="tool-icon">✨</div>
+                <h3>图片去水印工具</h3>
+                <p>智能去除图片水印，涂抹水印区域即可自动修复</p>
             </div>
         </div>
 
@@ -161,6 +171,10 @@
 
         document.getElementById('imageCompressor').addEventListener('click', () => {
             window.electronAPI.navigateTo('image-compressor');
+        });
+
+        document.getElementById('removeWatermark').addEventListener('click', () => {
+            window.electronAPI.navigateTo('remove-watermark');
         });
     </script>
 </body>

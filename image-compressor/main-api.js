@@ -24,8 +24,24 @@ ipcMain.handle('paste-image', async () => {
   }
 });
 
-// 复制图片到剪贴板
+// 复制图片到剪贴板（copy-image）
 ipcMain.handle('copy-image', async (event, dataUrl) => {
+  try {
+    const base64Data = dataUrl.split(',')[1];
+    const buffer = Buffer.from(base64Data, 'base64');
+    const image = nativeImage.createFromBuffer(buffer);
+    
+    clipboard.writeImage(image);
+    
+    return { success: true, message: '图片已复制到剪贴板' };
+  } catch (error) {
+    console.error('复制图片失败：', error);
+    return { success: false, message: `复制失败：${error.message}` };
+  }
+});
+
+// 复制图片到剪贴板（copy-to-clipboard，兼容旧版调用）
+ipcMain.handle('copy-to-clipboard', async (event, dataUrl) => {
   try {
     const base64Data = dataUrl.split(',')[1];
     const buffer = Buffer.from(base64Data, 'base64');

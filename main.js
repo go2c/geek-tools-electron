@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, clipboard, nativeImage } = require('electron');
 const path = require('path');
 
 let mainWindow;
@@ -34,7 +34,7 @@ app.whenReady().then(() => {
     }
   });
   
-  // 导入子应用的API
+  // 导入子应用的API（每个main-api.js会注册自己的handler）
   require('./excel-tool/main-api.js');
   require('./image-compressor/main-api.js');
 });
@@ -55,6 +55,9 @@ ipcMain.handle('navigate-to', async (event, appName) => {
       break;
     case 'image-compressor':
       htmlPath = path.join(__dirname, 'image-compressor', 'index.html');     
+      break;
+    case 'remove-watermark':
+      htmlPath = path.join(__dirname, 'remove-watermark', 'index.html');     
       break;
     case 'home':
     default:

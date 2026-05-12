@@ -1,6 +1,7 @@
 // 全局变量
 let originalFile = null
 let compressedDataUrl = null
+let compressedBlobUrl = null  // 用于预览的 blob URL
 let aspectRatio = 1
 
 // DOM选择器
@@ -31,6 +32,28 @@ function formatFileSize(bytes) {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
+}
+
+/**
+ * 将图片URL转换为data URL（用于复制到剪贴板）
+ * @param {string} url 图片URL（支持blob URL）
+ * @returns {Promise<string>} data URL
+ */
+function loadImageAsDataUrl(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = img.naturalWidth
+      canvas.height = img.naturalHeight
+      const ctx = canvas.getContext('2d')
+      ctx.drawImage(img, 0, 0)
+      resolve(canvas.toDataURL('image/png'))
+    }
+    img.onerror = reject
+    img.src = url
+  })
 }
 
 /**
@@ -115,7 +138,9 @@ $('#backBtn').addEventListener('click', () => {
 // 1. 从剪贴板获取图片
 $('#pasteBtn').addEventListener('click', async () => {
   try {
-    const dataUrl = await window.electron.pasteImage()
+    const result = await window.electron.pasteImage()
+    // 处理返回值可能是对象或字符串的情况
+    const dataUrl = typeof result === 'string' ? result : (result.success !== false ? result.dataUrl : null)
     if (!dataUrl) {
       toast('剪贴板中没有找到图片', 2500)
       return
@@ -226,7 +251,9 @@ document.addEventListener('keydown', async (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
     // 尝试从剪贴板获取图片
     try {
-      const dataUrl = await window.electron.pasteImage()
+      const result = await window.electron.pasteImage()
+      // 处理返回值可能是对象或字符串的情况
+      const dataUrl = typeof result === 'string' ? result : (result.success !== false ? result.dataUrl : null)
       if (dataUrl) {
         e.preventDefault()
         // 加载图片获取尺寸
@@ -316,15 +343,20 @@ $('#compressBtn').addEventListener('click', async () => {
 
     // 执行压缩
     const compressedFile = await imageCompression(originalFile, compressOptions)
-    // 生成预览地址
-    compressedDataUrl = URL.createObjectURL(compressedFile)
+    // 生成预览地址（blob URL）
+    compressedBlobUrl = URL.createObjectURL(compressedFile)
+    
+    // 加载压缩后的图片并转换为 data URL（用于复制到剪贴板）
+    const dataUrl = await loadImageAsDataUrl(compressedBlobUrl)
+    compressedDataUrl = dataUrl
+    
     // 显示压缩图
-    $('#compressedImg').src = compressedDataUrl
+    $('#compressedImg').src = compressedBlobUrl
     $('#compressedImg').style.display = 'block'
 
     // 获取压缩后图片尺寸
     const compressedImg = new Image()
-    compressedImg.src = compressedDataUrl
+    compressedImg.src = compressedBlobUrl
     compressedImg.onload = () => {
       // 更新压缩图信息
       $('#compressedInfo').textContent = `尺寸：${compressedImg.width} × ${compressedImg.height} px  |  大小：${formatFileSize(compressedFile.size)}`
@@ -345,8 +377,12 @@ $('#compressBtn').addEventListener('click', async () => {
 $('#copyBtn').addEventListener('click', async () => {
   if (!compressedDataUrl) return
   try {
-    await window.electron.copyToClipboard(compressedDataUrl)
-    toast('已复制到剪贴板')
+    const result = await window.electron.copyToClipboard(compressedDataUrl)
+    if (result && result.success !== false) {
+      toast('已复制到剪贴板')
+    } else {
+      toast(result?.message || '复制失败，请重试', 3000)
+    }
   } catch (error) {
     toast('复制失败，请重试', 3000)
     console.error(error)

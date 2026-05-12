@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图片去水印工具</title>
+    <!-- <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ant-design-icons@4.7.0/font/ant-design-icons.min.css"> -->
+    <script async src="opencv.js" onload="onOpenCvReady();" type="text/javascript"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            width: 100%;
+            max-width: 1020px;
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+            position: relative;
+        }
+
+        .back-btn {
+            position: absolute;
+            left: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .back-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-50%) scale(1.05);
+        }
+
+        .header h1 {
+            font-size: 28px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .header p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 24px;
+        }
+
+        /* 粘贴按钮 */
+        .paste-section {
+            margin-bottom: 20px;
+        }
+
+        .paste-btn {
+            width: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 16px;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .paste-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .paste-btn:active {
+            transform: translateY(0);
+        }
+
+        /* 预览卡片容器 */
+        .preview-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        .preview-card {
+            background: #f8f9fa;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 2px dashed #dee2e6;
+            transition: all 0.3s ease;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .preview-card:hover {
+            border-color: #667eea;
+            background: #f0f2ff;
+        }
+
+        /* 卡片头部 */
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            background: white;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .card-label {
+            padding: 6px 14px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .card-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .action-btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .action-btn.copy-btn {
+            background: #e9ecef;
+            color: #495057;
+        }
+
+        .action-btn.copy-btn:hover {
+            background: #dee2e6;
+        }
+
+        .action-btn.save-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .action-btn.save-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        /* 图片预览区域 */
+        .preview-img-wrapper {
+            width: 100%;
+            height: 280px;
+            background: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            border-bottom: 1px solid #e9ecef;
+            overflow: hidden;
+            cursor: crosshair;
+        }
+
+        .preview-img-wrapper img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            position: relative;
+            z-index: 1;
+        }
+
+        .preview-empty {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #adb5bd;
+            text-align: center;
+        }
+
+        .preview-empty i {
+            font-size: 48px;
+            margin-bottom: 12px;
+        }
+
+        .preview-empty h3 {
+            font-size: 16px;
+            margin-bottom: 4px;
+            color: #495057;
+        }
+
+        .preview-empty p {
+            font-size: 12px;
+        }
+
+        /* 画布层 */
+        .canvas-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            cursor: crosshair;
+        }
+
+        /* 查看原图按钮 */
+        .view-original-btn {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.6);
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            z-index: 20;
+            display: none;
+        }
+
+        .view-original-btn:hover {
+            background: rgba(0, 0, 0, 0.8);
+        }
+
+        /* 图片信息 */
+        .image-info {
+            padding: 12px 16px;
+            background: white;
+            text-align: center;
+            font-size: 12px;
+            color: #6c757d;
+        }
+
+        /* 控制面板 */
+        .control-panel {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .control-panel h3 {
+            font-size: 16px;
+            color: #333;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .control-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            align-items: center;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .control-group label {
+            font-size: 14px;
+            color: #495057;
+            font-weight: 500;
+        }
+
+        .control-group input[type="range"] {
+            width: 150px;
+            cursor: pointer;
+        }
+
+        .control-group input[type="number"] {
+            width: 100px;
+            padding: 8px 12px;
+            border: 1px solid #ced4da;
+            border-radius: 8px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.3s ease;
+        }
+
+        .control-group input[type="number"]:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .control-group .range-value {
+            font-size: 14px;
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        .control-group.row {
+            flex-direction: row;
+            align-items: center;
+        }
+
+        /* 模式切换按钮 */
+        .mode-toggle {
+            display: flex;
+            gap: 8px;
+            background: #e9ecef;
+            padding: 4px;
+            border-radius: 10px;
+        }
+
+        .mode-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: transparent;
+            color: #495057;
+            font-weight: 500;
+        }
+
+        .mode-btn:hover {
+            background: rgba(102, 126, 234, 0.1);
+        }
+
+        .mode-btn.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+        }
+
+        .mode-btn .icon {
+            margin-right: 6px;
+        }
+
+        /* 框选样式 */
+        .selection-rect {
+            position: absolute;
+            border: 2px dashed #667eea;
+            background: rgba(102, 126, 234, 0.1);
+            z-index: 15;
+            pointer-events: none;
+        }
+
+        /* 操作按钮 */
+        .action-section {
+            display: flex;
+            gap: 16px;
+            justify-content: center;
+        }
+
+        .action-btn-large {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 32px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .action-btn-large:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .action-btn-large:active {
+            transform: translateY(0);
+        }
+
+        .action-btn-large.secondary {
+            background: #e9ecef;
+            color: #495057;
+        }
+
+        .action-btn-large.secondary:hover {
+            background: #dee2e6;
+            box-shadow: none;
+        }
+
+        .action-btn-large:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* 提示信息 */
+        .hint {
+            text-align: center;
+            color: #6c757d;
+            font-size: 13px;
+            margin-top: 16px;
+        }
+
+        /* 进度指示器 */
+        .progress-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+
+        .progress-spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 12px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .progress-text {
+            font-size: 14px;
+            color: #495057;
+        }
+
+        /* 提示框 */
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #333;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            z-index: 1000;
+            opacity: 0;
+            transform: translateX(100px);
+            transition: all 0.3s ease;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateX(0);
+        }
+
+        .toast.success {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        }
+
+        .toast.error {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+        }
+
+        /* 全屏预览模态框 */
+        .fullscreen-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 1000;
+            flex-direction: column;
+        }
+
+        .fullscreen-modal.show {
+            display: flex;
+        }
+
+        .fullscreen-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 24px;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .fullscreen-header h2 {
+            color: white;
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .fullscreen-actions {
+            display: flex;
+            gap: 12px;
+        }
+
+        .fullscreen-btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .fullscreen-btn.confirm {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+        }
+
+        .fullscreen-canvas-container {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: auto;
+            position: relative;
+        }
+
+        .fullscreen-canvas {
+            cursor: crosshair;
+        }
+
+        .fullscreen-footer {
+            padding: 12px 24px;
+            background: rgba(255, 255, 255, 0.1);
+            text-align: center;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 13px;
+        }
+
+        .fullscreen-toolbar {
+            display: flex;
+            justify-content: center;
+            gap: 32px;
+            padding: 12px 24px;
+            background: rgba(255, 255, 255, 0.08);
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .toolbar-group {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .toolbar-group label {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 14px;
+            white-space: nowrap;
+        }
+
+        .toolbar-group input[type="range"] {
+            width: 120px;
+            height: 6px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+            outline: none;
+        }
+
+        .toolbar-group input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .toolbar-group .range-value {
+            color: white;
+            font-size: 14px;
+            font-weight: 600;
+            min-width: 32px;
+            text-align: center;
+        }
+
+        /* OpenCV加载提示 */
+        .opencv-status {
+            text-align: center;
+            padding: 10px;
+            background: #fff3cd;
+            border: 1px solid #ffeeba;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            font-size: 13px;
+            color: #856404;
+            display: none;
+        }
+
+        .opencv-status.ready {
+            background: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <button class="back-btn" id="backBtn">← 返回工具集</button>
+            <h1>🖼️ 图片去水印工具</h1>
+            <p>涂抹水印区域，智能去除水印</p>
+        </div>
+
+        <div class="content">
+            <!-- OpenCV状态 -->
+            <div class="opencv-status" id="opencvStatus">正在加载 OpenCV.js...</div>
+            
+            <!-- 粘贴按钮 -->
+            <div class="paste-section">
+                <button class="paste-btn" id="pasteBtn">
+                    <i class="anticon anticon-clipboard"></i>
+                    从剪贴板获取图片
+                </button>
+            </div>
+
+            <!-- 预览区域 -->
+            <div class="preview-container">
+                <!-- 原图 -->
+                <div class="preview-card">
+                    <div class="card-header">
+                        <span class="card-label">原图</span>
+                        <div class="card-actions">
+                            <button class="action-btn save-btn" id="removeOriginalBtn" disabled>
+                                <i class="anticon anticon-delete"></i>移除
+                            </button>
+                        </div>
+                    </div>
+                    <div class="preview-img-wrapper" id="originalPreview">
+                        <div class="preview-empty" id="originalEmpty">
+                            <i class="anticon anticon-image"></i>
+                            <h3>选择图片</h3>
+                            <p>点击或拖拽图片到此处</p>
+                        </div>
+                        <img id="originalImg" src="" style="display: none;" />
+                        <button class="view-original-btn" id="viewOriginalBtn">
+                            <i class="anticon anticon-expand"></i>查看大图 / 涂抹水印
+                        </button>
+                    </div>
+                    <div class="image-info" id="originalInfo">
+                        尺寸：- | 大小：-
+                    </div>
+                </div>
+
+                <!-- 处理后 -->
+                <div class="preview-card">
+                    <div class="card-header">
+                        <span class="card-label">去水印后</span>
+                        <div class="card-actions">
+                            <button class="action-btn copy-btn" id="copyResultBtn" disabled>
+                                <i class="anticon anticon-copy"></i>复制
+                            </button>
+                            <button class="action-btn save-btn" id="saveResultBtn" disabled>
+                                <i class="anticon anticon-download"></i>保存
+                            </button>
+                        </div>
+                    </div>
+                    <div class="preview-img-wrapper" id="resultPreview">
+                        <div class="preview-empty" id="resultEmpty">
+                            <i class="anticon anticon-magic"></i>
+                            <h3>处理结果预览</h3>
+                            <p>涂抹水印后点击去除水印</p>
+                        </div>
+                        <img id="resultImg" src="" style="display: none;" />
+                        <button class="view-original-btn" id="viewResultBtn" style="display: none;">
+                            <i class="anticon anticon-expand"></i>查看大图
+                        </button>
+                    </div>
+                    <div class="image-info" id="resultInfo">
+                        尺寸：- | 大小：-
+                    </div>
+                </div>
+            </div>
+
+            <!-- 模式切换 -->
+            <div class="control-panel" style="margin-bottom: 16px; padding: 16px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <span style="font-weight: 600; color: #495057;">选择模式：</span>
+                        <div class="mode-toggle">
+                            <button class="mode-btn active" id="brushModeBtn">
+                                <span class="icon">✏️</span>涂抹模式
+                            </button>
+                            <button class="mode-btn" id="rectModeBtn">
+                                <span class="icon">⬜</span>框选模式
+                            </button>
+                        </div>
+                    </div>
+                    <div id="modeHint" style="font-size: 13px; color: #6c757d;">
+                        点击图片区域涂抹水印
+                    </div>
+                </div>
+            </div>
+
+            <!-- 操作按钮 -->
+            <div class="action-section">
+                <button class="action-btn-large" id="removeBtn" disabled>
+                    <i class="anticon anticon-magic"></i>
+                    去除水印
+                </button>
+                <button class="action-btn-large secondary" id="clearBtn" disabled>
+                    <i class="anticon anticon-undo"></i>
+                    清除涂抹
+                </button>
+            </div>
+
+            <div class="hint">
+                <i class="anticon anticon-info-circle"></i>
+                提示：点击图片区域进入全屏模式，在全屏模式中涂抹水印区域，调整画笔大小获得更好效果
+            </div>
+        </div>
+    </div>
+
+    <!-- 全屏预览模态框 -->
+    <div class="fullscreen-modal" id="fullscreenModal">
+        <div class="fullscreen-header">
+            <h2>原图编辑 (100%)</h2>
+            <div class="fullscreen-actions">
+                <button class="fullscreen-btn" id="clearFullscreenBtn">
+                    <i class="anticon anticon-undo"></i>清除
+                </button>
+                <button class="fullscreen-btn confirm" id="confirmFullscreenBtn">
+                    <i class="anticon anticon-check"></i>确认涂抹
+                </button>
+                <button class="fullscreen-btn" id="closeFullscreenBtn">
+                    <i class="anticon anticon-close"></i>关闭
+                </button>
+            </div>
+        </div>
+        <div class="fullscreen-toolbar">
+            <div class="toolbar-group">
+                <label for="brushSize">画笔大小</label>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <input type="range" id="brushSize" min="5" max="50" value="20">
+                    <span class="range-value" id="brushSizeValue">20</span>
+                </div>
+            </div>
+            <div class="toolbar-group">
+                <label for="repairRadius">修复半径</label>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <input type="range" id="repairRadius" min="3" max="20" value="10">
+                    <span class="range-value" id="repairRadiusValue">10</span>
+                </div>
+            </div>
+        </div>
+        <div class="fullscreen-canvas-container" id="fullscreenCanvasContainer">
+            <canvas class="fullscreen-canvas" id="fullscreenCanvas"></canvas>
+        </div>
+        <div class="fullscreen-footer">
+            使用鼠标涂抹水印区域 | 滚轮缩放 | 拖拽移动
+        </div>
+    </div>
+
+    <!-- 提示框 -->
+    <div class="toast" id="toast"></div>
+
+    <script src="renderer.js"></script>
+</body>
+</html>

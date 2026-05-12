@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Image Compressor APIs
   pasteImage: () => ipcRenderer.invoke('paste-image'),
   copyToClipboard: (dataUrl) => ipcRenderer.invoke('copy-to-clipboard', dataUrl),
+  copyImage: (dataUrl) => ipcRenderer.invoke('copy-image', dataUrl),
   minimizeWindow: () => ipcRenderer.invoke('minimize-window'),
   maximizeWindow: () => ipcRenderer.invoke('maximize-window'),
   closeWindow: () => ipcRenderer.invoke('close-window')
