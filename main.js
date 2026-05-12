@@ -37,6 +37,7 @@ app.whenReady().then(() => {
   // 导入子应用的API（每个main-api.js会注册自己的handler）
   require('./excel-tool/main-api.js');
   require('./image-compressor/main-api.js');
+  require('./remove-watermark/main-api.js')();
 });
 
 app.on('window-all-closed', () => {

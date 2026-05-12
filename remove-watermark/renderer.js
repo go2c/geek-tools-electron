@@ -5,49 +5,139 @@ let originalWidth = 0;
 let originalHeight = 0;
 let maskCanvas = null;
 let maskCtx = null;
-let isDrawing = false;
-let lastX = 0;
-let lastY = 0;
 let brushSize = 20;
-let repairRadius = 10;
-let opencvReady = false;
 
-// 框选模式相关变量
-let currentMode = 'brush'; // 'brush' 或 'rect'
-let isSelectingRect = false;
-let rectStartX = 0;
-let rectStartY = 0;
-let selectionRect = null; // { x1, y1, x2, y2 }
-let selectionRectElement = null;
+// AI 模式相关变量
+let aiModeEnabled = true;  // 是否启用 AI 模式
+let aiModelReady = false;   // AI 模型是否就绪
 
-// ==================== 框选模式功能 ====================
+// ==================== AI 模式功能 ====================
 
 /**
- * 初始化框选模式
+ * 检查 AI 模型状态
  */
-function initRectMode() {
-    const wrapper = document.getElementById('originalPreview');
-    const brushBtn = document.getElementById('brushModeBtn');
-    const rectBtn = document.getElementById('rectModeBtn');
+async function checkAIModel() {
+    if (typeof window.watermarkAI !== 'undefined') {
+        try {
+            const status = await window.watermarkAI.checkModel();
+            console.log('AI 模型完整状态:', JSON.stringify(status, null, 2));
+            
+            // 使用 modelLoaded 字段判断模型是否真正加载完成
+            aiModelReady = status.available || status.modelLoaded === true;
+            
+            const aiBtn = document.getElementById('aiModeBtn');
+            if (aiBtn) {
+                if (aiModelReady) {
+                    aiBtn.title = 'LaMa 模型已就绪';
+                    aiBtn.style.opacity = '1';
+                    aiBtn.classList.add('active');
+                    const hint = document.getElementById('modeHint');
+                    if (hint) hint.textContent = 'AI 已启用，涂抹水印后点击去除';
+                } else {
+                    aiBtn.title = status.message || 'AI 模型未就绪';
+                    aiBtn.style.opacity = '0.6';
+                    const hint = document.getElementById('modeHint');
+                    if (hint) hint.textContent = status.message || 'AI 模型加载中...';
+                }
+            }
+            
+            console.log('AI 模型状态:', status.message);
+            console.log('aiModelReady 设置为:', aiModelReady);
+            
+            return status;
+        } catch (e) {
+            console.error('检查 AI 模型失败:', e);
+            return { available: false, message: 'API 不可用: ' + e.message };
+        }
+    }
+    return { available: false, message: 'AI API 未加载' };
+}
+
+/**
+ * 启用/禁用 AI 模式
+ */
+async function toggleAIMode() {
+    aiModeEnabled = !aiModeEnabled;
     
-    // 涂抹模式按钮
-    brushBtn.addEventListener('click', () => {
-        switchToBrushMode();
-    });
+    if (aiModeEnabled && !aiModelReady) {
+        const status = await checkAIModel();
+        if (!status.available) {
+            aiModeEnabled = false;
+            showToast('AI 模型未就绪', 'error');
+            return;
+        }
+    }
     
-    // 框选模式按钮
-    rectBtn.addEventListener('click', () => {
-        switchToRectMode();
-    });
+    const aiBtn = document.getElementById('aiModeBtn');
+    if (aiBtn) {
+        aiBtn.classList.toggle('active', aiModeEnabled);
+        aiBtn.innerHTML = aiModeEnabled 
+            ? '<span class="icon">✅</span>AI 已启用'
+            : '<span class="icon">🤖</span>启用 AI 深度修复';
+    }
     
-    // 鼠标事件处理
-    wrapper.addEventListener('mousedown', handleWrapperMouseDown);
-    wrapper.addEventListener('mousemove', handleWrapperMouseMove);
-    wrapper.addEventListener('mouseup', handleWrapperMouseUp);
-    wrapper.addEventListener('mouseleave', handleWrapperMouseLeave);
+    const hint = document.getElementById('modeHint');
+    if (hint) {
+        hint.textContent = aiModeEnabled 
+            ? 'AI 模式已启用，将使用 LaMa 深度学习模型修复'
+            : '涂抹水印区域后点击去除水印';
+    }
     
-    // 全屏模式的框选
-    setupFullscreenRectMode();
+    console.log('AI 模式:', aiModeEnabled ? '已启用' : '已禁用');
+}
+
+/**
+ * 使用 AI 执行去水印
+ */
+async function performAIInpaint(srcCanvas, maskCanvas) {
+    if (!aiModelReady) {
+        showToast('AI 模型未就绪', 'error');
+        return null;
+    }
+    
+    try {
+        showToast('正在使用 AI 深度修复...', 'success');
+        
+        const imageBase64 = srcCanvas.toDataURL('image/png');
+        const maskBase64 = maskCanvas.toDataURL('image/png');
+        
+        const result = await window.watermarkAI.inpaint(imageBase64, maskBase64, originalWidth, originalHeight);
+        
+        if (result.success) {
+            return result.result;
+        } else {
+            showToast('AI 修复失败: ' + result.error, 'error');
+            return null;
+        }
+    } catch (e) {
+        console.error('AI 修复异常:', e);
+        showToast('AI 修复异常', 'error');
+        return null;
+    }
+}
+
+/**
+ * 初始化 AI 模式
+ */
+function initAIMode() {
+    const aiBtn = document.getElementById('aiModeBtn');
+    if (aiBtn) {
+        aiBtn.addEventListener('click', toggleAIMode);
+    }
+    // 初始化时检查 AI 模型状态
+    checkAIModel();
+    
+    // 定期检查模型状态直到加载完成
+    const checkInterval = setInterval(async () => {
+        if (aiModelReady) {
+            clearInterval(checkInterval);
+            return;
+        }
+        await checkAIModel();
+    }, 2000); // 每2秒检查一次
+    
+    // 最多检查30秒
+    setTimeout(() => clearInterval(checkInterval), 30000);
 }
 
 /**
@@ -410,7 +500,25 @@ async function performInpaintForText(srcCanvas, maskCanvas, rect) {
     
     let resultCanvas;
     
-    // 使用强力迭代算法
+    // 优先使用 AI 模式（如果启用且可用）
+    if (aiModeEnabled && aiModelReady) {
+        console.log('使用 AI 深度修复模式...');
+        const aiResult = await performAIInpaint(srcCanvas, maskCanvas);
+        if (aiResult) {
+            // 将 Base64 转换为 Canvas
+            const img = new Image();
+            img.src = aiResult;
+            await new Promise(resolve => img.onload = resolve);
+            
+            resultCanvas = document.createElement('canvas');
+            resultCanvas.width = originalWidth;
+            resultCanvas.height = originalHeight;
+            const ctx = resultCanvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+        }
+    }
+    
+    // 使用 OpenCV 修复（如果没有 AI 结果或 AI 未启用）
     if (opencvReady && typeof cv !== 'undefined') {
         try {
             console.log('使用OpenCV强力修复...');
@@ -2303,9 +2411,10 @@ function inpaintWithImprovedTraditional(srcCanvas, maskCanvas) {
 
 // 去除水印
 async function removeWatermark() {
-    if (!originalImage || !maskCanvas) return;
-    
-    showToast('正在处理...', 'success');
+    if (!originalImage || !maskCanvas) {
+        showToast('请先涂抹水印区域', 'error');
+        return;
+    }
     
     // 创建原图画布
     const srcCanvas = document.createElement('canvas');
@@ -2314,118 +2423,39 @@ async function removeWatermark() {
     const srcCtx = srcCanvas.getContext('2d');
     srcCtx.drawImage(originalImage, 0, 0);
     
-    // 创建掩码画布副本（确保正确格式）
+    // 创建掩码画布副本
     const maskCanvasCopy = document.createElement('canvas');
     maskCanvasCopy.width = originalWidth;
     maskCanvasCopy.height = originalHeight;
     const maskCtxCopy = maskCanvasCopy.getContext('2d');
     maskCtxCopy.drawImage(maskCanvas, 0, 0);
     
-    let resultCanvas;
+    let resultCanvas = null;
     
-    console.log('开始去水印处理...');
-    
-    // 第一步：检测水印类型
-    const watermarkInfo = detectWatermarkType(srcCanvas, maskCanvasCopy);
-    const { type, details } = watermarkInfo;
-    
-    // 第二步：根据水印类型选择最佳算法
-    console.log(`根据水印类型 "${type}" 选择最佳算法...`);
-    
-    // 文字水印：使用强力迭代算法
-    if (type === 'lightTextWatermark' || type === 'darkTextWatermark') {
-        try {
-            console.log('使用强力迭代修复算法（专门针对顽固文字水印）...');
-            resultCanvas = inpaintWithIteration(srcCanvas, maskCanvasCopy);
-            if (resultCanvas) {
-                console.log('强力迭代算法成功');
-            }
-        } catch (e) {
-            console.error('强力迭代算法失败:', e);
-        }
-        
-        // 如果强力算法失败，尝试OpenCV
-        if (!resultCanvas && opencvReady && typeof cv !== 'undefined') {
-            try {
-                console.log('尝试OpenCV Telea算法...');
-                resultCanvas = inpaintWithOpenCVImproved(srcCanvas, maskCanvasCopy);
-                if (resultCanvas) {
-                    console.log('OpenCV Telea方法成功');
-                }
-            } catch (e) {
-                console.error('OpenCV方法失败:', e);
-            }
-        }
-    } else {
-        // 其他类型水印：使用OpenCV inpaint
-        if (opencvReady && typeof cv !== 'undefined') {
-            try {
-                console.log('使用OpenCV inpaint算法...');
-                resultCanvas = inpaintWithOpenCVImproved(srcCanvas, maskCanvasCopy);
-                if (resultCanvas) {
-                    console.log('OpenCV inpaint方法成功');
-                }
-            } catch (e) {
-                console.error('OpenCV方法失败:', e);
-            }
-        }
-        
-        // 渐变水印 - 尝试FFT
-        if (!resultCanvas && type === 'gradientWatermark') {
-            try {
-                console.log('尝试FFT频率域方法...');
-                resultCanvas = removeWatermarkByFFT(srcCanvas, maskCanvasCopy);
-                if (resultCanvas) {
-                    console.log('FFT方法成功');
-                }
-            } catch (e) {
-                console.error('FFT方法失败:', e);
-            }
-        }
-        
-        // 图案水印 - 多尺度修复
-        if (!resultCanvas && type === 'patternWatermark') {
-            try {
-                console.log('尝试多尺度智能修复...');
-                resultCanvas = inpaintMultiScale(srcCanvas, maskCanvasCopy);
-                if (resultCanvas) {
-                    console.log('多尺度方法成功');
-                }
-            } catch (e) {
-                console.error('多尺度方法失败:', e);
-            }
+    // 优先使用 AI 模式
+    if (aiModeEnabled && aiModelReady) {
+        console.log('使用 AI LaMa 深度修复...');
+        const aiResult = await performAIInpaint(srcCanvas, maskCanvasCopy);
+        if (aiResult) {
+            const img = new Image();
+            img.src = aiResult;
+            await new Promise(resolve => img.onload = resolve);
+            
+            resultCanvas = document.createElement('canvas');
+            resultCanvas.width = originalWidth;
+            resultCanvas.height = originalHeight;
+            const ctx = resultCanvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
         }
     }
     
-    // 最终保底：传统算法
+    // 保底：使用传统方法
     if (!resultCanvas) {
-        try {
-            console.log('使用传统算法作为保底...');
-            resultCanvas = inpaintWithImprovedTraditional(srcCanvas, maskCanvasCopy);
-            if (resultCanvas) {
-                console.log('传统方法成功');
-            }
-        } catch (e) {
-            console.error('传统方法失败:', e);
-        }
+        console.log('使用传统修复算法...');
+        resultCanvas = inpaintWithImprovedTraditional(srcCanvas, maskCanvasCopy);
     }
     
-    // 保底方法：传统双边滤波
     if (!resultCanvas) {
-        try {
-            console.log('使用传统算法作为保底...');
-            resultCanvas = inpaintWithImprovedTraditional(srcCanvas, maskCanvasCopy);
-            if (resultCanvas) {
-                console.log('传统方法成功');
-            }
-        } catch (e) {
-            console.error('传统方法失败:', e);
-        }
-    }
-    
-    // 最终保底：使用原图
-    if (!resultCanvas) {
-        console.warn('所有方法都失败，使用原图');
         resultCanvas = srcCanvas;
     }
     
@@ -2434,19 +2464,15 @@ async function removeWatermark() {
     resultImg.src = resultDataUrl;
     resultEmpty.style.display = 'none';
     resultImg.style.display = 'block';
-    
-    // 启用结果全屏查看按钮
     viewResultBtn.style.display = 'block';
     
-    // 更新信息
     const blob = await fetch(resultDataUrl).then(res => res.blob());
     resultInfo.textContent = `尺寸：${originalWidth} × ${originalHeight} | 大小：${formatFileSize(blob.size)}`;
     
-    // 启用按钮
     copyResultBtn.disabled = false;
     saveResultBtn.disabled = false;
     
-    showToast('去水印完成');
+    showToast(aiModeEnabled ? 'AI 深度修复完成' : '去水印完成');
 }
 
 // 复制到剪贴板
@@ -2834,8 +2860,8 @@ pasteBtn.addEventListener('click', async () => {
 removeBtn.addEventListener('click', removeWatermark);
 clearBtn.addEventListener('click', clearDrawing);
 
-// 初始化框选模式
-initRectMode();
+// 初始化 AI 模式
+initAIMode();
 
 // 移除已上传的图片
 removeOriginalBtn.addEventListener('click', () => {

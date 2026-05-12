@@ -729,22 +729,17 @@
                 </div>
             </div>
 
-            <!-- 模式切换 -->
+            <!-- AI 增强模式 -->
             <div class="control-panel" style="margin-bottom: 16px; padding: 16px;">
                 <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
                     <div style="display: flex; align-items: center; gap: 12px;">
-                        <span style="font-weight: 600; color: #495057;">选择模式：</span>
-                        <div class="mode-toggle">
-                            <button class="mode-btn active" id="brushModeBtn">
-                                <span class="icon">✏️</span>涂抹模式
-                            </button>
-                            <button class="mode-btn" id="rectModeBtn">
-                                <span class="icon">⬜</span>框选模式
-                            </button>
-                        </div>
+                        <span style="font-weight: 600; color: #495057;">AI 增强：</span>
+                        <button class="mode-btn" id="aiModeBtn" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-color: #667eea;">
+                            <span class="icon">🤖</span>启用 AI 深度修复
+                        </button>
                     </div>
                     <div id="modeHint" style="font-size: 13px; color: #6c757d;">
-                        点击图片区域涂抹水印
+                        使用 LaMa 深度学习模型，无痕去除水印
                     </div>
                 </div>
             </div>

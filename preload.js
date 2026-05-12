@@ -28,3 +28,15 @@ contextBridge.exposeInMainWorld('electron', {
   maximizeWindow: () => ipcRenderer.invoke('maximize-window'),
   closeWindow: () => ipcRenderer.invoke('close-window')
 });
+
+// AI 去水印 API
+contextBridge.exposeInMainWorld('watermarkAI', {
+  checkModel: () => ipcRenderer.invoke('watermark-ai:check-model'),
+  inpaint: (imageBase64, maskBase64, width, height) => ipcRenderer.invoke('watermark-ai:inpaint', { 
+    imageBase64, 
+    maskBase64,
+    width,
+    height
+  }),
+  getModelInfo: () => ipcRenderer.invoke('watermark-ai:get-model-info')
+});

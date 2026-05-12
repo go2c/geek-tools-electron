@@ -27,3 +27,5 @@ electron-builder-cache/
 # 环境变量
 .env
 package-lock.json
+remove-watermark/models/lama.onnx
+remove-watermark/models/lama_fp32.onnx

@@ -20,8 +20,10 @@
     "electron-builder": "^24.13.3"
   },
   "dependencies": {
-    "xlsx": "^0.18.5",
-    "browser-image-compression": "^2.0.2"
+    "browser-image-compression": "^2.0.2",
+    "jimp": "^1.6.1",
+    "onnxruntime-node": "^1.26.0",
+    "xlsx": "^0.18.5"
   },
   "build": {
     "appId": "com.geektools.app",
