@@ -11,7 +11,40 @@ let brushSize = 20;
 let aiModeEnabled = true;  // 是否启用 AI 模式
 let aiModelReady = false;   // AI 模型是否就绪
 
-// ==================== AI 模式功能 ====================
+// ==================== AI 模型状态 ====================
+
+let isModelLoading = false;  // 模型是否正在加载
+
+/**
+ * 显示 AI 模型状态
+ * @param {boolean} loading - 是否正在加载
+ * @param {string} text - 状态文本
+ */
+function showAIModelStatus(loading, text) {
+    const statusEl = document.getElementById('aiModelStatus');
+    if (!statusEl) return;
+
+    const textEl = statusEl.querySelector('.status-text');
+    if (loading) {
+        statusEl.classList.add('show');
+        statusEl.classList.remove('ready');
+        if (textEl) textEl.textContent = text;
+    } else {
+        statusEl.classList.remove('show');
+    }
+}
+
+/**
+ * 显示 AI 模型已就绪状态
+ */
+function showAIModelReady() {
+    const statusEl = document.getElementById('aiModelStatus');
+    if (!statusEl) return;
+
+    statusEl.classList.add('show', 'ready');
+    const textEl = statusEl.querySelector('.status-text');
+    if (textEl) textEl.textContent = 'AI 模型已就绪 ✓';
+}
 
 /**
  * 检查 AI 模型状态
@@ -19,90 +52,76 @@ let aiModelReady = false;   // AI 模型是否就绪
 async function checkAIModel() {
     if (typeof window.watermarkAI !== 'undefined') {
         try {
-            const status = await window.watermarkAI.checkModel();
-            console.log('AI 模型完整状态:', JSON.stringify(status, null, 2));
-            
-            // 使用 modelLoaded 字段判断模型是否真正加载完成
-            aiModelReady = status.available || status.modelLoaded === true;
-            
-            const aiBtn = document.getElementById('aiModeBtn');
-            if (aiBtn) {
-                if (aiModelReady) {
-                    aiBtn.title = 'LaMa 模型已就绪';
-                    aiBtn.style.opacity = '1';
-                    aiBtn.classList.add('active');
-                    const hint = document.getElementById('modeHint');
-                    if (hint) hint.textContent = 'AI 已启用，涂抹水印后点击去除';
-                } else {
-                    aiBtn.title = status.message || 'AI 模型未就绪';
-                    aiBtn.style.opacity = '0.6';
-                    const hint = document.getElementById('modeHint');
-                    if (hint) hint.textContent = status.message || 'AI 模型加载中...';
-                }
-            }
-            
-            console.log('AI 模型状态:', status.message);
-            console.log('aiModelReady 设置为:', aiModelReady);
-            
-            return status;
+            return await window.watermarkAI.checkModel();
         } catch (e) {
             console.error('检查 AI 模型失败:', e);
-            return { available: false, message: 'API 不可用: ' + e.message };
+            return { available: false, message: 'API 不可用' };
         }
     }
     return { available: false, message: 'AI API 未加载' };
 }
 
 /**
- * 启用/禁用 AI 模式
+ * 预加载 AI 模型（独立函数）
  */
-async function toggleAIMode() {
-    aiModeEnabled = !aiModeEnabled;
-    
-    if (aiModeEnabled && !aiModelReady) {
+async function loadAIModel() {
+    if (aiModelReady) {
+        showToast('AI 模型已就绪');
+        return;
+    }
+
+    if (isModelLoading) {
+        showToast('模型正在加载中...', 'info');
+        return;
+    }
+
+    isModelLoading = true;
+    const loadModelBtn = document.getElementById('loadModelBtn');
+    if (loadModelBtn) {
+        loadModelBtn.disabled = true;
+        loadModelBtn.innerHTML = '<i class="anticon anticon-loading"></i> 加载中...';
+    }
+
+    showAIModelStatus(true, '正在加载 AI 模型...');
+
+    // 使用 setTimeout 让 UI 有机会更新
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    try {
         const status = await checkAIModel();
-        if (!status.available) {
-            aiModeEnabled = false;
-            showToast('AI 模型未就绪', 'error');
-            return;
+        console.log('AI 模型状态:', JSON.stringify(status, null, 2));
+
+        if (status.available) {
+            aiModelReady = true;
+            showAIModelReady();
+            showToast('AI 模型加载完成！');
+        } else {
+            showAIModelStatus(false);
+            showToast('AI 模型不可用: ' + (status.message || '未知错误'), 'error');
+        }
+    } catch (e) {
+        console.error('模型加载失败:', e);
+        showAIModelStatus(false);
+        showToast('模型加载失败', 'error');
+    } finally {
+        isModelLoading = false;
+        if (loadModelBtn) {
+            loadModelBtn.disabled = false;
+            loadModelBtn.innerHTML = '<i class="anticon anticon-cloud-download"></i> 预加载模型';
         }
     }
-    
-    const aiBtn = document.getElementById('aiModeBtn');
-    if (aiBtn) {
-        aiBtn.classList.toggle('active', aiModeEnabled);
-        aiBtn.innerHTML = aiModeEnabled 
-            ? '<span class="icon">✅</span>AI 已启用'
-            : '<span class="icon">🤖</span>启用 AI 深度修复';
-    }
-    
-    const hint = document.getElementById('modeHint');
-    if (hint) {
-        hint.textContent = aiModeEnabled 
-            ? 'AI 模式已启用，将使用 LaMa 深度学习模型修复'
-            : '涂抹水印区域后点击去除水印';
-    }
-    
-    console.log('AI 模式:', aiModeEnabled ? '已启用' : '已禁用');
 }
 
 /**
  * 使用 AI 执行去水印
  */
 async function performAIInpaint(srcCanvas, maskCanvas) {
-    if (!aiModelReady) {
-        showToast('AI 模型未就绪', 'error');
-        return null;
-    }
-    
     try {
-        showToast('正在使用 AI 深度修复...', 'success');
-        
         const imageBase64 = srcCanvas.toDataURL('image/png');
         const maskBase64 = maskCanvas.toDataURL('image/png');
-        
+
         const result = await window.watermarkAI.inpaint(imageBase64, maskBase64, originalWidth, originalHeight);
-        
+
         if (result.success) {
             return result.result;
         } else {
@@ -114,30 +133,6 @@ async function performAIInpaint(srcCanvas, maskCanvas) {
         showToast('AI 修复异常', 'error');
         return null;
     }
-}
-
-/**
- * 初始化 AI 模式
- */
-function initAIMode() {
-    const aiBtn = document.getElementById('aiModeBtn');
-    if (aiBtn) {
-        aiBtn.addEventListener('click', toggleAIMode);
-    }
-    // 初始化时检查 AI 模型状态
-    checkAIModel();
-    
-    // 定期检查模型状态直到加载完成
-    const checkInterval = setInterval(async () => {
-        if (aiModelReady) {
-            clearInterval(checkInterval);
-            return;
-        }
-        await checkAIModel();
-    }, 2000); // 每2秒检查一次
-    
-    // 最多检查30秒
-    setTimeout(() => clearInterval(checkInterval), 30000);
 }
 
 /**
@@ -1052,6 +1047,7 @@ const copyResultBtn = document.getElementById('copyResultBtn');
 const saveResultBtn = document.getElementById('saveResultBtn');
 const viewOriginalBtn = document.getElementById('viewOriginalBtn');
 const viewResultBtn = document.getElementById('viewResultBtn');
+const loadModelBtn = document.getElementById('loadModelBtn');
 
 const brushSizeSlider = document.getElementById('brushSize');
 const brushSizeValue = document.getElementById('brushSizeValue');
@@ -1060,7 +1056,8 @@ const repairRadiusValue = document.getElementById('repairRadiusValue');
 
 const backBtn = document.getElementById('backBtn');
 const toast = document.getElementById('toast');
-const opencvStatus = document.getElementById('opencvStatus');
+
+let isRemoveProcessing = false;  // 是否正在处理中
 
 const fullscreenModal = document.getElementById('fullscreenModal');
 const fullscreenCanvasEl = document.getElementById('fullscreenCanvas');
@@ -1069,17 +1066,6 @@ const clearFullscreenBtn = document.getElementById('clearFullscreenBtn');
 const confirmFullscreenBtn = document.getElementById('confirmFullscreenBtn');
 const closeFullscreenBtn = document.getElementById('closeFullscreenBtn');
 
-// OpenCV加载完成回调
-function onOpenCvReady() {
-    opencvReady = true;
-    opencvStatus.textContent = 'OpenCV.js 加载完成，可以使用高级算法';
-    opencvStatus.classList.add('ready');
-    opencvStatus.style.display = 'block';
-    setTimeout(() => {
-        opencvStatus.style.display = 'none';
-    }, 3000);
-}
-
 // 显示提示框
 function showToast(message, type = 'success') {
     toast.textContent = message;
@@ -1087,6 +1073,29 @@ function showToast(message, type = 'success') {
     setTimeout(() => {
         toast.classList.remove('show');
     }, 2000);
+}
+
+/**
+ * 设置去除水印按钮的 loading 状态
+ */
+function setRemoveBtnLoading(loading) {
+    if (loading) {
+        removeBtn.classList.add('btn-loading');
+        removeBtn.disabled = true;
+        clearBtn.disabled = true;
+        loadModelBtn.disabled = true;
+        isRemoveProcessing = true;
+    } else {
+        removeBtn.classList.remove('btn-loading');
+        removeBtn.disabled = false;
+        clearBtn.disabled = false;
+        loadModelBtn.disabled = false;
+        isRemoveProcessing = false;
+    }
+}
+
+function waitForUiUpdate() {
+    return new Promise(resolve => requestAnimationFrame(() => resolve()));
 }
 
 // 格式化文件大小
@@ -2415,64 +2424,103 @@ async function removeWatermark() {
         showToast('请先涂抹水印区域', 'error');
         return;
     }
-    
+
+    if (isRemoveProcessing) {
+        showToast('正在处理中，请稍候...', 'info');
+        return;
+    }
+
     // 创建原图画布
     const srcCanvas = document.createElement('canvas');
     srcCanvas.width = originalWidth;
     srcCanvas.height = originalHeight;
     const srcCtx = srcCanvas.getContext('2d');
     srcCtx.drawImage(originalImage, 0, 0);
-    
+
     // 创建掩码画布副本
     const maskCanvasCopy = document.createElement('canvas');
     maskCanvasCopy.width = originalWidth;
     maskCanvasCopy.height = originalHeight;
     const maskCtxCopy = maskCanvasCopy.getContext('2d');
     maskCtxCopy.drawImage(maskCanvas, 0, 0);
-    
+
+    // 开始处理，按钮显示 loading
+    setRemoveBtnLoading(true);
+    await waitForUiUpdate();
+
     let resultCanvas = null;
-    
-    // 优先使用 AI 模式
-    if (aiModeEnabled && aiModelReady) {
-        console.log('使用 AI LaMa 深度修复...');
-        const aiResult = await performAIInpaint(srcCanvas, maskCanvasCopy);
-        if (aiResult) {
-            const img = new Image();
-            img.src = aiResult;
-            await new Promise(resolve => img.onload = resolve);
-            
-            resultCanvas = document.createElement('canvas');
-            resultCanvas.width = originalWidth;
-            resultCanvas.height = originalHeight;
-            const ctx = resultCanvas.getContext('2d');
-            ctx.drawImage(img, 0, 0);
+    let usedAI = false;
+
+    try {
+        // AI 模式：模型未就绪时先尝试加载
+        if (aiModeEnabled) {
+            if (!aiModelReady) {
+                // 模型未加载，显示加载状态并尝试加载
+                showAIModelStatus(true, '首次使用，正在加载 AI 模型...');
+                await waitForUiUpdate();
+
+                const status = await checkAIModel();
+                if (status.available) {
+                    aiModelReady = true;
+                    showAIModelReady();
+                } else {
+                    showAIModelStatus(false);
+                    showToast('AI 模型不可用，将使用传统算法', 'info');
+                }
+            }
+
+            if (aiModelReady) {
+                console.log('使用 AI LaMa 深度修复...');
+                await waitForUiUpdate();
+                const aiResult = await performAIInpaint(srcCanvas, maskCanvasCopy);
+
+                if (aiResult) {
+                    const img = new Image();
+                    img.src = aiResult;
+                    await new Promise(resolve => { img.onload = resolve; });
+
+                    resultCanvas = document.createElement('canvas');
+                    resultCanvas.width = originalWidth;
+                    resultCanvas.height = originalHeight;
+                    const ctx = resultCanvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0);
+                    usedAI = true;
+                }
+            }
         }
+
+        // 保底：使用传统方法（AI 未就绪或 AI 修复失败时）
+        if (!resultCanvas) {
+            console.log('使用传统修复算法...');
+            await waitForUiUpdate();
+            resultCanvas = inpaintWithImprovedTraditional(srcCanvas, maskCanvasCopy);
+        }
+
+        if (!resultCanvas) {
+            resultCanvas = srcCanvas;
+        }
+
+        // 显示结果
+        const resultDataUrl = resultCanvas.toDataURL('image/png');
+        resultImg.src = resultDataUrl;
+        resultEmpty.style.display = 'none';
+        resultImg.style.display = 'block';
+        viewResultBtn.style.display = 'block';
+
+        const blob = await fetch(resultDataUrl).then(res => res.blob());
+        resultInfo.textContent = `尺寸：${originalWidth} × ${originalHeight} | 大小：${formatFileSize(blob.size)}`;
+
+        copyResultBtn.disabled = false;
+        saveResultBtn.disabled = false;
+
+        showToast(usedAI ? 'AI 修复完成' : '处理完成');
+    } catch (error) {
+        console.error('去除水印失败:', error);
+        showToast('去除水印失败，请重试', 'error');
+    } finally {
+        setRemoveBtnLoading(false);
     }
-    
-    // 保底：使用传统方法
-    if (!resultCanvas) {
-        console.log('使用传统修复算法...');
-        resultCanvas = inpaintWithImprovedTraditional(srcCanvas, maskCanvasCopy);
-    }
-    
-    if (!resultCanvas) {
-        resultCanvas = srcCanvas;
-    }
-    
-    // 显示结果
-    const resultDataUrl = resultCanvas.toDataURL('image/png');
-    resultImg.src = resultDataUrl;
-    resultEmpty.style.display = 'none';
-    resultImg.style.display = 'block';
-    viewResultBtn.style.display = 'block';
-    
-    const blob = await fetch(resultDataUrl).then(res => res.blob());
-    resultInfo.textContent = `尺寸：${originalWidth} × ${originalHeight} | 大小：${formatFileSize(blob.size)}`;
-    
-    copyResultBtn.disabled = false;
-    saveResultBtn.disabled = false;
-    
-    showToast(aiModeEnabled ? 'AI 深度修复完成' : '去水印完成');
+
 }
 
 // 复制到剪贴板
@@ -2860,8 +2908,8 @@ pasteBtn.addEventListener('click', async () => {
 removeBtn.addEventListener('click', removeWatermark);
 clearBtn.addEventListener('click', clearDrawing);
 
-// 初始化 AI 模式
-initAIMode();
+// 预加载模型按钮
+loadModelBtn.addEventListener('click', loadAIModel);
 
 // 移除已上传的图片
 removeOriginalBtn.addEventListener('click', () => {

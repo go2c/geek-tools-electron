@@ -1,13 +1,203 @@
 // 全局变量
 let originalFile = null
+let originalFormat = null  // 原图格式
 let compressedDataUrl = null
 let compressedBlobUrl = null  // 用于预览的 blob URL
+let compressedMimeType = 'image/jpeg'  // 当前压缩输出的 MIME 类型
 let aspectRatio = 1
 
 // DOM选择器
 const $ = selector => document.querySelector(selector)
 
+/**
+ * PNG 转 ICO 工具函数
+ * ICO 文件格式：文件头 + 目录条目 + PNG数据
+ */
+
+/**
+ * 将 PNG Uint8Array 转换为 ICO 格式
+ * @param {Uint8Array} pngData PNG 格式的图像数据
+ * @param {number} width 图标宽度
+ * @param {number} height 图标高度
+ * @returns {Uint8Array} ICO 格式的图像数据
+ */
+function pngEntriesToIco(entries) {
+  const count = entries.length
+  const iconDir = new ArrayBuffer(6)
+  const iconDirView = new DataView(iconDir)
+  iconDirView.setUint16(0, 0, true)
+  iconDirView.setUint16(2, 1, true)
+  iconDirView.setUint16(4, count, true)
+
+  const iconEntries = entries.map(entry => {
+    const entryBuffer = new ArrayBuffer(16)
+    const entryView = new DataView(entryBuffer)
+    entryView.setUint8(0, entry.width >= 256 ? 0 : entry.width)
+    entryView.setUint8(1, entry.height >= 256 ? 0 : entry.height)
+    entryView.setUint8(2, 0)
+    entryView.setUint8(3, 0)
+    entryView.setUint16(4, 1, true)
+    entryView.setUint16(6, 32, true)
+    entryView.setUint32(8, entry.pngData.length, true)
+    // Offset will be set later
+    return { entryBuffer, pngData: entry.pngData }
+  })
+
+  let offset = 6 + iconEntries.length * 16
+  iconEntries.forEach(item => {
+    const itemView = new DataView(item.entryBuffer)
+    itemView.setUint32(12, offset, true)
+    offset += item.pngData.length
+  })
+
+  const result = new Uint8Array(offset)
+  result.set(new Uint8Array(iconDir), 0)
+  let position = 6
+  iconEntries.forEach(item => {
+    result.set(new Uint8Array(item.entryBuffer), position)
+    position += 16
+  })
+  iconEntries.forEach(item => {
+    result.set(item.pngData, position)
+    position += item.pngData.length
+  })
+
+  return result
+}
+
+function pngToIco(pngData, width, height) {
+  return pngEntriesToIco([{ width, height, pngData }])
+}
+
+function dataUrlToUint8Array(dataUrl) {
+  const base64 = dataUrl.split(',')[1]
+  const binary = atob(base64)
+  const array = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) {
+    array[i] = binary.charCodeAt(i)
+  }
+  return array
+}
+
+function loadImageFromDataUrl(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => resolve(img)
+    img.onerror = reject
+    img.src = dataUrl
+  })
+}
+
+function createPngDataForSize(img, size) {
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')
+  ctx.clearRect(0, 0, size, size)
+
+  const ratio = Math.min(size / img.naturalWidth, size / img.naturalHeight)
+  const drawWidth = Math.round(img.naturalWidth * ratio)
+  const drawHeight = Math.round(img.naturalHeight * ratio)
+  const offsetX = Math.round((size - drawWidth) / 2)
+  const offsetY = Math.round((size - drawHeight) / 2)
+
+  ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight)
+  return dataUrlToUint8Array(canvas.toDataURL('image/png'))
+}
+
+function getIcoSizes(maxSize) {
+  const standardSizes = [16, 32, 48, 64, 128, 256]
+  const sizes = standardSizes.filter(size => size <= maxSize)
+  if (sizes.length === 0) {
+    return [Math.min(maxSize, 16)]
+  }
+  if (!sizes.includes(maxSize) && maxSize <= 256) {
+    sizes.push(maxSize)
+  }
+  return sizes
+}
+
+/**
+ * 将 data URL (PNG) 转换为 ICO 格式的 Blob，生成多尺寸图标条目
+ * @param {string} dataUrl PNG 格式的 data URL
+ * @param {number} width 图片宽度
+ * @param {number} height 图片高度
+ * @returns {Promise<Blob>} ICO 格式的 Blob
+ */
+async function dataUrlToMultiSizeIcoBlob(dataUrl, width, height) {
+  const img = await loadImageFromDataUrl(dataUrl)
+  const maxSize = Math.max(width, height)
+  const icoSizes = getIcoSizes(maxSize)
+  const entries = icoSizes.map(size => ({
+    width: size,
+    height: size,
+    pngData: createPngDataForSize(img, size)
+  }))
+
+  const icoData = pngEntriesToIco(entries)
+  return new Blob([icoData], { type: 'image/x-icon' })
+}
+
+/**
+ * 获取文件扩展名
+ * @param {string} mimeType MIME 类型
+ * @returns {string} 扩展名
+ */
+function getExtensionFromMimeType(mimeType) {
+  const extensions = {
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/gif': 'gif',
+    'image/webp': 'webp',
+    'image/bmp': 'bmp',
+    'image/x-icon': 'ico'
+  }
+  return extensions[mimeType] || 'png'
+}
+
 // -------------------------- 工具函数 --------------------------
+/**
+ * 根据文件扩展名获取 MIME 类型
+ * @param {string} filename 文件名
+ * @returns {string} MIME 类型
+ */
+function getMimeTypeFromName(filename) {
+  const ext = filename.split('.').pop().toLowerCase()
+  const mimeTypes = {
+    'jpg': 'image/jpeg',
+    'jpeg': 'image/jpeg',
+    'png': 'image/png',
+    'gif': 'image/gif',
+    'webp': 'image/webp',
+    'bmp': 'image/bmp',
+    'ico': 'image/x-icon',
+    'svg': 'image/svg+xml',
+    'tiff': 'image/tiff',
+    'tif': 'image/tiff'
+  }
+  return mimeTypes[ext] || 'image/png'
+}
+
+/**
+ * 获取格式显示名称
+ * @param {string} mimeType MIME 类型
+ * @returns {string} 显示名称
+ */
+function getFormatDisplayName(mimeType) {
+  const names = {
+    'image/jpeg': 'JPEG',
+    'image/png': 'PNG',
+    'image/gif': 'GIF',
+    'image/webp': 'WebP',
+    'image/bmp': 'BMP',
+    'image/x-icon': 'ICO',
+    'image/svg+xml': 'SVG',
+    'image/tiff': 'TIFF'
+  }
+  return names[mimeType] || mimeType
+}
+
 /**
  * HeroUI风格Toast通知
  * @param {string} message 提示内容
@@ -57,6 +247,41 @@ function loadImageAsDataUrl(url) {
 }
 
 /**
+ * 将图片URL转换为指定格式的data URL
+ * @param {string} url 图片URL（支持blob URL）
+ * @param {string} mimeType 目标MIME类型
+ * @param {number} quality 质量（0-1）
+ * @returns {Promise<string>} data URL
+ */
+function loadImageAsDataUrlWithFormat(url, mimeType, quality = 0.92) {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = img.naturalWidth
+      canvas.height = img.naturalHeight
+      const ctx = canvas.getContext('2d')
+      
+      // ICO 格式：canvas.toDataURL 不直接支持，需要使用 PNG
+      // 或者使用ICO.js库，这里简化为 PNG（因为大多数情况下 ICO 转换是嵌入 PNG）
+      const outputType = mimeType === 'image/x-icon' ? 'image/png' : mimeType
+      
+      ctx.drawImage(img, 0, 0)
+      
+      // GIF 不支持 quality 参数
+      if (outputType === 'image/gif') {
+        resolve(canvas.toDataURL('image/gif'))
+      } else {
+        resolve(canvas.toDataURL(outputType, quality))
+      }
+    }
+    img.onerror = reject
+    img.src = url
+  })
+}
+
+/**
  * 加载图片文件（File对象）到预览区
  * @param {File} file 图片文件对象
  */
@@ -65,6 +290,9 @@ function loadImageFile(file) {
     toast('请选择有效的图片文件', 2500)
     return
   }
+  
+  // 检测原图格式
+  originalFormat = file.type || getMimeTypeFromName(file.name)
   
   const reader = new FileReader()
   reader.onload = (e) => {
@@ -84,8 +312,9 @@ function loadImageFile(file) {
       // 记录文件对象用于压缩
       originalFile = file
       
-      // 更新原图信息
-      $('#originalInfo').textContent = `尺寸：${img.width} × ${img.height} px  |  大小：${formatFileSize(file.size)}`
+      // 更新原图信息（包含格式）
+      const formatName = getFormatDisplayName(originalFormat)
+      $('#originalInfo').textContent = `尺寸：${img.width} × ${img.height} px  |  大小：${formatFileSize(file.size)}  |  格式：${formatName}`
       
       // 重置压缩状态
       compressedDataUrl = null
@@ -161,10 +390,12 @@ $('#pasteBtn').addEventListener('click', async () => {
       
       // 转换为File对象用于压缩
       const blob = await fetch(dataUrl).then(res => res.blob())
+      originalFormat = blob.type || 'image/png'
       originalFile = new File([blob], 'clipboard-image.png', { type: blob.type })
       
       // 更新原图信息
-      $('#originalInfo').textContent = `尺寸：${img.width} × ${img.height} px  |  大小：${formatFileSize(blob.size)}`
+      const formatName = getFormatDisplayName(originalFormat)
+      $('#originalInfo').textContent = `尺寸：${img.width} × ${img.height} px  |  大小：${formatFileSize(blob.size)}  |  格式：${formatName}`
       
       // 重置压缩状态
       compressedDataUrl = null
@@ -271,10 +502,12 @@ document.addEventListener('keydown', async (e) => {
           
           // 转换为File对象用于压缩
           const blob = await fetch(dataUrl).then(res => res.blob())
+          originalFormat = blob.type || 'image/png'
           originalFile = new File([blob], 'clipboard-image.png', { type: blob.type })
           
           // 更新原图信息
-          $('#originalInfo').textContent = `尺寸：${img.width} × ${img.height} px  |  大小：${formatFileSize(blob.size)}`
+          const formatName = getFormatDisplayName(originalFormat)
+          $('#originalInfo').textContent = `尺寸：${img.width} × ${img.height} px  |  大小：${formatFileSize(blob.size)}  |  格式：${formatName}`
           
           // 重置压缩状态
           compressedDataUrl = null
@@ -320,6 +553,7 @@ $('#compressBtn').addEventListener('click', async () => {
   const quality = parseInt($('#quality').value)
   const targetWidth = parseInt($('#width').value)
   const targetHeight = parseInt($('#height').value)
+  const outputFormat = $('#outputFormat').value
 
   if (isNaN(quality) || quality < 0 || quality > 100) {
     toast('压缩质量请输入0-100之间的整数', 2500)
@@ -331,6 +565,15 @@ $('#compressBtn').addEventListener('click', async () => {
   }
 
   try {
+    // 确定输出 MIME 类型
+    const isIcoFormat = outputFormat === 'image/x-icon'
+    let targetMimeType = outputFormat === 'original' ? originalFormat : outputFormat
+    
+    // ICO 格式特殊处理：先压缩为 PNG，然后转换为 ICO
+    if (isIcoFormat) {
+      targetMimeType = 'image/png'
+    }
+    
     // 压缩配置
     const compressOptions = {
       maxWidthOrHeight: Math.max(targetWidth, targetHeight),
@@ -338,35 +581,57 @@ $('#compressBtn').addEventListener('click', async () => {
       height: targetHeight,
       useWebWorker: true,
       initialQuality: quality / 100,
-      alwaysKeepResolution: true
+      alwaysKeepResolution: true,
+      fileType: targetMimeType
     }
 
     // 执行压缩
     const compressedFile = await imageCompression(originalFile, compressOptions)
+    
     // 生成预览地址（blob URL）
     compressedBlobUrl = URL.createObjectURL(compressedFile)
     
-    // 加载压缩后的图片并转换为 data URL（用于复制到剪贴板）
-    const dataUrl = await loadImageAsDataUrl(compressedBlobUrl)
-    compressedDataUrl = dataUrl
+    // 获取压缩后的尺寸
+    const compressedImg = new Image()
+    await new Promise((resolve, reject) => {
+      compressedImg.src = compressedBlobUrl
+      compressedImg.onload = resolve
+      compressedImg.onerror = reject
+    })
     
-    // 显示压缩图
-    $('#compressedImg').src = compressedBlobUrl
+    // ICO 格式：生成真正的 ICO 文件
+    let actualFileSize = compressedFile.size  // 默认使用压缩后的 PNG 大小
+    if (isIcoFormat) {
+      // 加载为 data URL
+      const pngDataUrl = await loadImageAsDataUrl(compressedBlobUrl)
+      // 转换为 ICO，生成多个标准尺寸条目
+      const icoBlob = await dataUrlToMultiSizeIcoBlob(pngDataUrl, compressedImg.width, compressedImg.height)
+      actualFileSize = icoBlob.size  // 使用 ICO 实际大小
+      compressedBlobUrl = URL.createObjectURL(icoBlob)
+      compressedMimeType = 'image/x-icon'
+      compressedDataUrl = pngDataUrl // 保存 PNG 用于复制
+      // 显示预览（使用 PNG 预览，因为 ICO 预览可能不兼容）
+      $('#compressedImg').src = pngDataUrl
+    } else {
+      // 其他格式：正常转换
+      const dataUrl = await loadImageAsDataUrlWithFormat(compressedBlobUrl, targetMimeType, quality / 100)
+      compressedDataUrl = dataUrl
+      compressedMimeType = targetMimeType
+      // 显示压缩图
+      $('#compressedImg').src = compressedBlobUrl
+    }
+    
     $('#compressedImg').style.display = 'block'
 
-    // 获取压缩后图片尺寸
-    const compressedImg = new Image()
-    compressedImg.src = compressedBlobUrl
-    compressedImg.onload = () => {
-      // 更新压缩图信息
-      $('#compressedInfo').textContent = `尺寸：${compressedImg.width} × ${compressedImg.height} px  |  大小：${formatFileSize(compressedFile.size)}`
-      // 启用操作按钮
-      $('#copyBtn').disabled = false
-      $('#saveBtn').disabled = false
-      // 更新空状态
-      updatePreviewEmptyState()
-      toast('图片压缩成功')
-    }
+    // 更新压缩图信息
+    const formatName = getFormatDisplayName(isIcoFormat ? 'image/x-icon' : targetMimeType)
+    $('#compressedInfo').textContent = `尺寸：${compressedImg.width} × ${compressedImg.height} px  |  大小：${formatFileSize(actualFileSize)}  |  格式：${formatName}`
+    // 启用操作按钮
+    $('#copyBtn').disabled = false
+    $('#saveBtn').disabled = false
+    // 更新空状态
+    updatePreviewEmptyState()
+    toast('图片压缩成功')
   } catch (error) {
     toast('压缩失败，请重试', 3000)
     console.error(error)
@@ -391,11 +656,22 @@ $('#copyBtn').addEventListener('click', async () => {
 
 // 5. 保存到本地
 $('#saveBtn').addEventListener('click', () => {
-  if (!compressedDataUrl) return
-  const downloadLink = document.createElement('a')
-  downloadLink.href = compressedDataUrl
-  downloadLink.download = `compressed-image-${Date.now()}.jpg`
-  downloadLink.click()
+  if (!compressedDataUrl && !compressedBlobUrl) return
+  
+  const ext = getExtensionFromMimeType(compressedMimeType)
+  
+  // ICO 格式：使用 blob URL 下载
+  if (compressedMimeType === 'image/x-icon' && compressedBlobUrl) {
+    const downloadLink = document.createElement('a')
+    downloadLink.href = compressedBlobUrl
+    downloadLink.download = `compressed-image-${Date.now()}.${ext}`
+    downloadLink.click()
+  } else if (compressedDataUrl) {
+    const downloadLink = document.createElement('a')
+    downloadLink.href = compressedDataUrl
+    downloadLink.download = `compressed-image-${Date.now()}.${ext}`
+    downloadLink.click()
+  }
   toast('图片已保存')
 })
 

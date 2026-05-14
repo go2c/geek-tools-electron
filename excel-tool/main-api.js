@@ -50,7 +50,7 @@ ipcMain.handle('get-excel-headers', async (event, filePath) => {
 });
 
 // 处理Excel文件
-ipcMain.handle('process-excel', async (event, { filePath, operation, selectedColumns }) => {
+ipcMain.handle('process-excel', async (event, { filePath, operation, selectedColumns, statsMethod }) => {
   try {
     const workbook = XLSX.readFile(filePath, { cellDates: true, raw: false });
     
@@ -87,7 +87,7 @@ ipcMain.handle('process-excel', async (event, { filePath, operation, selectedCol
       resultData = unmergeCells(rows, headers, selectedColumns);
       newSheetName = sheetName + '_unmerged';
     } else if (operation === 'stats') {
-      const statsResult = groupStats(rows, headers, selectedColumns);
+      const statsResult = groupStats(rows, headers, selectedColumns, statsMethod);
       resultData = statsResult.data;
       merges = statsResult.merges;
       newSheetName = sheetName + '_stats';
@@ -227,7 +227,7 @@ function unmergeCells(rows, headers, selectedColumns) {
 }
 
 // 分组统计
-function groupStats(rows, headers, selectedColumns) {
+function groupStats(rows, headers, selectedColumns, statsMethod = 'count') {
   if (!selectedColumns || selectedColumns.length === 0) {
     return { data: [headers, ...rows], merges: [] };
   }
@@ -250,50 +250,97 @@ function groupStats(rows, headers, selectedColumns) {
       if (cellValue === null || cellValue === undefined || cellValue === '') {
         filledRows[i][colIndex] = lastValue;
       } else {
-        lastValue = cellValue;
+        lastValue = filledRows[i][colIndex];
       }
     }
   });
   
   const groups = {};
-  
+
+  const isCount = statsMethod !== 'sum' && statsMethod !== 'average';
+  const valueIndex = isCount ? null : columnIndices[columnIndices.length - 1];
+  const groupIndices = isCount ? columnIndices : columnIndices.slice(0, -1);
+  const groupHeaders = isCount ? selectedColumns : selectedColumns.slice(0, -1);
+
+  const makeNumber = (value) => {
+    if (value === null || value === undefined || value === '') return null;
+    const num = Number(String(value).replace(/,/g, '').trim());
+    return Number.isFinite(num) ? num : null;
+  };
+
   filledRows.forEach(row => {
-    const key = columnIndices.map(idx => row[idx]).join('|');
+    const key = groupIndices.map(idx => row[idx]).join('|');
     if (!groups[key]) {
       groups[key] = {
-        values: columnIndices.map(idx => row[idx]),
-        count: 0
+        keys: groupIndices.map(idx => row[idx]),
+        count: 0,
+        sum: 0,
+        validCount: 0
       };
     }
     groups[key].count++;
+
+    if (!isCount) {
+      const num = makeNumber(row[valueIndex]);
+      if (num !== null) {
+        groups[key].sum += num;
+        groups[key].validCount++;
+      }
+    }
   });
   
-  const statsHeaders = [...selectedColumns, '计数'];
-  const statsRows = Object.values(groups).map(group => [...group.values, group.count]);
+  const resultHeaders = [];
+  if (groupHeaders.length > 0) {
+    resultHeaders.push(...groupHeaders);
+  }
+
+  if (isCount) {
+    resultHeaders.push('计数');
+  } else if (statsMethod === 'sum') {
+    resultHeaders.push(`${selectedColumns[selectedColumns.length - 1]} 求和`);
+  } else {
+    resultHeaders.push(`${selectedColumns[selectedColumns.length - 1]} 平均值`);
+  }
+
+  const statsRows = Object.values(groups).map(group => {
+    if (isCount) {
+      return [...group.keys, group.count];
+    }
+
+    const value = statsMethod === 'sum'
+      ? group.sum
+      : group.validCount > 0
+        ? Number((group.sum / group.validCount).toFixed(2))
+        : 0;
+
+    return group.keys.length > 0 ? [...group.keys, value] : [value];
+  });
   
   const merges = [];
-  const resultData = [statsHeaders, ...statsRows];
-  
-  for (let colIndex = 0; colIndex < statsHeaders.length - 1; colIndex++) {
-    let startRow = 1;
-    let currentValue = resultData[1][colIndex];
-    
-    for (let i = 2; i <= resultData.length; i++) {
-      const cellValue = i < resultData.length ? resultData[i][colIndex] : null;
-      
-      if (cellValue !== currentValue || i === resultData.length) {
-        if (i - startRow > 1) {
-          merges.push({
-            s: { r: startRow, c: colIndex },
-            e: { r: i - 1, c: colIndex }
-          });
+  const resultData = [resultHeaders, ...statsRows];
+
+  if (groupIndices.length > 0) {
+    for (let colIndex = 0; colIndex < groupIndices.length; colIndex++) {
+      let startRow = 1;
+      let currentValue = resultData[1][colIndex];
+
+      for (let i = 2; i <= resultData.length; i++) {
+        const cellValue = i < resultData.length ? resultData[i][colIndex] : null;
+
+        if (cellValue !== currentValue || i === resultData.length) {
+          if (i - startRow > 1) {
+            merges.push({
+              s: { r: startRow, c: colIndex },
+              e: { r: i - 1, c: colIndex }
+            });
+          }
+          
+          startRow = i;
+          currentValue = cellValue;
         }
-        
-        startRow = i;
-        currentValue = cellValue;
       }
     }
   }
-  
+
   return { data: resultData, merges };
 }

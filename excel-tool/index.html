@@ -393,6 +393,41 @@
             animation: spin 0.8s linear infinite;
         }
 
+        .stats-method-section {
+            display: none;
+            margin-top: 16px;
+            padding: 16px;
+            border: 1px solid #e1e1e1;
+            border-radius: 10px;
+            background: #fafafa;
+        }
+
+        .stats-method-section.active {
+            display: block;
+        }
+
+        .stats-method-section h4 {
+            margin: 0 0 8px;
+            font-size: 14px;
+            color: #333;
+        }
+
+        .stats-method-section select {
+            width: 100%;
+            padding: 10px 12px;
+            border-radius: 6px;
+            border: 1px solid #ccc;
+            background: #fff;
+            font-size: 14px;
+            outline: none;
+        }
+
+        .stats-method-section .hint {
+            margin: 10px 0 0;
+            font-size: 12px;
+            color: #666;
+        }
+
         @keyframes spin {
             to {
                 transform: rotate(360deg);
@@ -454,6 +489,16 @@
                 </div>
                 <div class="columns-grid" id="columnsGrid">
                     <!-- 列复选框将动态生成 -->
+                </div>
+
+                <div class="stats-method-section" id="statsMethodSection">
+                    <h4>统计方式</h4>
+                    <select id="statsMethod">
+                        <option value="count">计数</option>
+                        <option value="sum">求和</option>
+                        <option value="average">平均值</option>
+                    </select>
+                    <p class="hint">求和/平均值模式下，默认将最后一列作为数值列，其余列作为分组字段。</p>
                 </div>
             </div>
 

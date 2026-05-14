@@ -11,6 +11,8 @@ const operationCards = document.querySelectorAll('.operation-card');
 const columnsSection = document.getElementById('columnsSection');
 const columnsTitle = document.getElementById('columnsTitle');
 const columnsGrid = document.getElementById('columnsGrid');
+const statsMethodSection = document.getElementById('statsMethodSection');
+const statsMethodSelect = document.getElementById('statsMethod');
 const selectAllBtn = document.getElementById('selectAllBtn');
 const clearAllBtn = document.getElementById('clearAllBtn');
 const processBtn = document.getElementById('processBtn');
@@ -49,6 +51,7 @@ function bindEvents() {
     // 列选择操作
     selectAllBtn.addEventListener('click', selectAllColumns);
     clearAllBtn.addEventListener('click', clearAllColumns);
+    statsMethodSelect.addEventListener('change', updateProcessButton);
     
     // 处理按钮
     processBtn.addEventListener('click', handleProcess);
@@ -134,6 +137,13 @@ function switchOperation(operation) {
     // 显示列选择区域
     columnsSection.classList.add('active');
     
+    // 统计方式选项仅在分组统计模式下可见
+    if (operation === 'stats') {
+        statsMethodSection.classList.add('active');
+    } else {
+        statsMethodSection.classList.remove('active');
+    }
+    
     // 更新处理按钮状态
     updateProcessButton();
 }
@@ -191,11 +201,12 @@ async function handleProcess() {
     showStatus('loading', '处理中', '正在处理Excel文件，请稍候...');
     
     try {
-        const result = await window.electronAPI.processExcel(
-            selectedFilePath,
-            currentOperation,
-            selectedColumns
-        );
+        const result = await window.electronAPI.processExcel({
+            filePath: selectedFilePath,
+            operation: currentOperation,
+            selectedColumns,
+            statsMethod: currentOperation === 'stats' ? statsMethodSelect.value : 'count'
+        });
         
         if (result.success) {
             showStatus('success', '处理完成', result.message, result.filePath);

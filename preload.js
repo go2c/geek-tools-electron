@@ -8,8 +8,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Excel Tool APIs
   openFileDialog: () => ipcRenderer.invoke('open-file-dialog'),
   getExcelHeaders: (filePath) => ipcRenderer.invoke('get-excel-headers', filePath),
-  processExcel: (filePath, operation, selectedColumns) => 
-    ipcRenderer.invoke('process-excel', { filePath, operation, selectedColumns }),
+  processExcel: ({ filePath, operation, selectedColumns, statsMethod }) => 
+    ipcRenderer.invoke('process-excel', { filePath, operation, selectedColumns, statsMethod }),
   
   // Image Compressor APIs
   pasteImage: () => ipcRenderer.invoke('paste-image'),

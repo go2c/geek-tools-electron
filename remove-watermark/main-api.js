@@ -12,17 +12,37 @@ let modelInfo = null; // 存储模型的输入输出信息
 function getModelPath() {
   if (!modelPath) {
     // 支持多个可能的模型文件名
-    const possibleNames = ['lama_fp32.onnx', 'lama_fp16.onnx', 'lama.onnx', 'big-lama'];
-    for (const name of possibleNames) {
-      const p = path.join(__dirname, 'models', name);
-      if (fs.existsSync(p)) {
-        modelPath = p;
-        console.log('找到模型:', p);
-        break;
+    const possibleNames = ['lama_fp32.onnx', 'lama.onnx', 'lama_fp16.onnx', 'big-lama'];
+
+    // 1. 优先从 HOME 环境变量下的 models/ 目录查找
+    const homeDir = process.env.HOME || process.env.USERPROFILE || '';
+    if (homeDir) {
+      for (const name of possibleNames) {
+        const p = path.join(homeDir, 'models', name);
+        if (fs.existsSync(p)) {
+          modelPath = p;
+          console.log('找到模型 (HOME/models):', p);
+          break;
+        }
       }
     }
+
+    // 2. 回退到项目目录内的 models/（兼容旧路径）
     if (!modelPath) {
-      modelPath = path.join(__dirname, 'models', 'lama_fp32.onnx');
+      for (const name of possibleNames) {
+        const p = path.join(__dirname, 'models', name);
+        if (fs.existsSync(p)) {
+          modelPath = p;
+          console.log('找到模型 (项目内 models):', p);
+          break;
+        }
+      }
+    }
+
+    // 3. 默认路径（文件不存在时给出明确提示）
+    if (!modelPath) {
+      modelPath = path.join(homeDir || __dirname, 'models', 'lama_fp32.onnx');
+      console.log('未找到模型文件，默认路径:', modelPath);
     }
   }
   return modelPath;
@@ -43,6 +63,8 @@ async function initONNX() {
   }
   
   try {
+    // 让出主线程，避免卡死 UI
+    await new Promise(resolve => setImmediate(resolve));
     ort = await import('onnxruntime-node');
     console.log('正在加载 LaMa 模型...');
     
@@ -101,20 +123,20 @@ function imageToCHWTensor(rgbaData, size) {
  */
 function maskToTensor(rgbaData, size) {
   const float32Data = new Float32Array(size * size);
-  
-  // 掩码: 1 = 修复区域, 0 = 保留区域
+
+  // lama_fp32.onnx: 1 = 修复区域(白色涂抹区), 0 = 保留区域
   for (let i = 0; i < size * size; i++) {
     const pixelIdx = i * 4;
-    // 取 R 通道或计算灰度值
     const brightness = (rgbaData[pixelIdx] + rgbaData[pixelIdx + 1] + rgbaData[pixelIdx + 2]) / 3;
     float32Data[i] = brightness > 125 ? 1.0 : 0.0;
   }
-  
+
   return float32Data;
 }
 
 /**
  * 将模型输出转换为 RGBA 图像数据
+ * 注意：lama_fp32.onnx 输出值范围是 [0, 255]（不是 [0,1]），直接取整即可
  * @param {Tensor} outputTensor - 模型输出的 Tensor
  * @param {number} size - 目标尺寸 (512)
  * @returns {Buffer} RGBA 格式的像素数据
@@ -122,20 +144,20 @@ function maskToTensor(rgbaData, size) {
 function tensorToRGBA(outputTensor, size) {
   const outputData = outputTensor.data;
   const rgbaData = Buffer.alloc(size * size * 4);
-  
-  // CHW -> HWC 并还原到 [0, 255]
+
   for (let i = 0; i < size * size; i++) {
-    const r = Math.max(0, Math.min(255, Math.round(outputData[i] * 255)));
-    const g = Math.max(0, Math.min(255, Math.round(outputData[i + size * size] * 255)));
-    const b = Math.max(0, Math.min(255, Math.round(outputData[i + 2 * size * size] * 255)));
-    
+    // 输出值已在 [0,255] 范围，直接 clamp+round
+    const r = Math.max(0, Math.min(255, Math.round(outputData[i])));
+    const g = Math.max(0, Math.min(255, Math.round(outputData[i + size * size])));
+    const b = Math.max(0, Math.min(255, Math.round(outputData[i + 2 * size * size])));
+
     const pixelIdx = i * 4;
-    rgbaData[pixelIdx] = r;
+    rgbaData[pixelIdx]     = r;
     rgbaData[pixelIdx + 1] = g;
     rgbaData[pixelIdx + 2] = b;
-    rgbaData[pixelIdx + 3] = 255; // Alpha
+    rgbaData[pixelIdx + 3] = 255;
   }
-  
+
   return rgbaData;
 }
 
@@ -146,6 +168,8 @@ async function aiInpaint(imageBase64, maskBase64, originalWidth, originalHeight)
   
   if (!lamaSession) {
     console.log('模型未初始化，开始初始化...');
+    // 使用 setImmediate 让出主线程，避免 UI 卡死
+    await new Promise(resolve => setImmediate(resolve));
     const initialized = await initONNX();
     if (!initialized) {
       throw new Error('AI 模型未初始化');
@@ -159,31 +183,36 @@ async function aiInpaint(imageBase64, maskBase64, originalWidth, originalHeight)
   console.log('模型输入:', modelInfo.inputs);
   console.log('模型输出:', modelInfo.outputs);
   
-  // 动态导入 jimp（用于图像解码）
-  let Jimp;
+  // 动态导入 jimp v1（用于图像解码）
+  let JimpLib;
   try {
-    Jimp = require('jimp');
+    JimpLib = require('jimp');
   } catch (e) {
     throw new Error('缺少 jimp 库，请运行: npm install jimp');
   }
+  // jimp v1 使用具名导出 { Jimp }
+  const Jimp = JimpLib.Jimp || JimpLib;
   
   // 解码 Base64 图像
   const imageBuffer = decodeBase64Image(imageBase64);
   const maskBuffer = decodeBase64Image(maskBase64);
   
-  // 读取图像
-  const image = await Jimp.read(imageBuffer);
-  const mask = await Jimp.read(maskBuffer);
+  // jimp v1: Jimp.read(buffer) 需要 PNG/JPEG 格式才能自动识别 MIME
+  // 直接用 fromBuffer 并指定 MIME
+  const image = await Jimp.fromBuffer(imageBuffer);
+  const mask = await Jimp.fromBuffer(maskBuffer);
   
-  const width = image.getWidth();
-  const height = image.getHeight();
+  // jimp v1: width/height 是属性，不再是 getWidth()/getHeight() 方法
+  const width = image.width;
+  const height = image.height;
   
   console.log(`输入图像尺寸: ${width}x${height}`);
   
   // 缩放到 512x512 (LaMa 模型输入尺寸)
+  // jimp v1: resize({ w, h }) 而不是 resize(w, h)
   const modelSize = 512;
-  image.resize(modelSize, modelSize);
-  mask.resize(modelSize, modelSize);
+  image.resize({ w: modelSize, h: modelSize });
+  mask.resize({ w: modelSize, h: modelSize });
   
   // 提取 RGBA 数据
   const imageBitmap = image.bitmap.data;
@@ -204,8 +233,18 @@ async function aiInpaint(imageBase64, maskBase64, originalWidth, originalHeight)
   const imageTensorData = imageToCHWTensor(imageBitmap, modelSize);
   const maskTensorData = maskToTensor(maskBitmap, modelSize);
   
-  console.log('图像张量范围:', Math.min(...imageTensorData), '~', Math.max(...imageTensorData));
-  console.log('掩码张量范围:', Math.min(...maskTensorData), '~', Math.max(...maskTensorData));
+  // 安全计算范围（避免大数组展开导致栈溢出）
+  let imgMin = Infinity, imgMax = -Infinity, mskMin = Infinity, mskMax = -Infinity;
+  for (let i = 0; i < imageTensorData.length; i++) {
+    if (imageTensorData[i] < imgMin) imgMin = imageTensorData[i];
+    if (imageTensorData[i] > imgMax) imgMax = imageTensorData[i];
+  }
+  for (let i = 0; i < maskTensorData.length; i++) {
+    if (maskTensorData[i] < mskMin) mskMin = maskTensorData[i];
+    if (maskTensorData[i] > mskMax) mskMax = maskTensorData[i];
+  }
+  console.log('图像张量范围:', imgMin.toFixed(3), '~', imgMax.toFixed(3));
+  console.log('掩码张量范围:', mskMin.toFixed(3), '~', mskMax.toFixed(3));
   
   // 创建 ONNX Tensor
   const imageTensor = new ort.Tensor('float32', imageTensorData, [1, 3, modelSize, modelSize]);
@@ -230,21 +269,19 @@ async function aiInpaint(imageBase64, maskBase64, originalWidth, originalHeight)
   const outputName = modelInfo.outputs[0];
   const outputTensor = results[outputName];
   
-  console.log('推理完成，输出形状:', outputTensor.dims);
+  console.log('推理完成，输出形状:', JSON.stringify(outputTensor.dims));
   
-  // 将输出转换为 RGBA 图像数据
-  const rgbaData = tensorToRGBA(outputTensor, modelSize);
-  
-  // 创建输出图像
-  const outputImage = new Jimp(modelSize, modelSize);
-  outputImage.bitmap.data = rgbaData;
-  
-  // 缩放回原始尺寸
-  outputImage.resize(originalWidth, originalHeight);
-  
-  // 转换为 Base64
-  const resultBase64 = await outputImage.getBase64Async('image/png');
-  
+  // ─── 步骤1：将模型输出（完整修复图）转换为 RGBA ──────────────────
+  // 模型已经输出完整图像，掩码区域已被正确修复，直接用即可
+  const inpaintedRGBA = tensorToRGBA(outputTensor, modelSize);
+
+  // ─── 步骤2：将修复图缩放回原始尺寸 ──────────────────────────────
+  const outputImage = Jimp.fromBitmap({ data: inpaintedRGBA, width: modelSize, height: modelSize });
+  outputImage.resize({ w: originalWidth, h: originalHeight });
+
+  // ─── 步骤3：导出为 Base64 ─────────────────────────────────────────
+  const resultBase64 = await outputImage.getBase64('image/png');
+
   console.log('AI 修复完成');
   return resultBase64;
 }
@@ -253,15 +290,17 @@ async function aiInpaint(imageBase64, maskBase64, originalWidth, originalHeight)
 function checkModelStatus() {
   const fileExists = isModelAvailable();
   const modelLoaded = lamaSession !== null;
-  const available = fileExists && modelLoaded;
+  // available 只要求模型文件存在，实际加载在 aiInpaint 时进行
+  const available = fileExists;
   
   let message;
   if (!fileExists) {
-    message = '模型文件未找到，请下载 lama.onnx';
+    const homeDir = process.env.HOME || process.env.USERPROFILE || '~';
+    message = `模型文件未找到，请将 lama_fp32.onnx 放至 ${homeDir}/models/ 目录`;
   } else if (!modelLoaded) {
-    message = '模型正在加载中...';
+    message = '模型文件已就绪，点击后将加载模型...';
   } else {
-    message = '模型已就绪，可以启用 AI 增强';
+    message = '模型已加载，可以启用 AI 增强';
   }
   
   return {
@@ -276,9 +315,9 @@ function checkModelStatus() {
 
 // 注册 IPC Handler
 module.exports = function() {
-  // 初始化 ONNX（异步，不阻塞启动）
-  initONNX().catch(err => console.error('ONNX 初始化错误:', err));
-  
+  // 模型改为按需加载，不在启动时初始化
+  // initONNX() 将在首次调用 aiInpaint 时执行
+
   // 检查模型状态
   ipcMain.handle('watermark-ai:check-model', async () => {
     return checkModelStatus();
@@ -304,8 +343,8 @@ module.exports = function() {
       inputs: modelInfo?.inputs || [],
       outputs: modelInfo?.outputs || [],
       instructions: [
-        '1. 下载 LaMa ONNX 模型',
-        '2. 将文件放到 remove-watermark/models/ 目录',
+        '1. 下载 LaMa ONNX 模型（lama_fp32.onnx 或 lama.onnx）',
+        '2. 将文件放到 %HOME%/models/ 目录（如 C:/Users/你的用户名/models/lama_fp32.onnx）',
         '3. 重启应用即可使用 AI 去水印'
       ]
     };

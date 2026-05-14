@@ -29,3 +29,4 @@ electron-builder-cache/
 package-lock.json
 remove-watermark/models/lama.onnx
 remove-watermark/models/lama_fp32.onnx
+/.workbuddy
